@@ -3,10 +3,6 @@
 extern crate embedded_hal as hal;
 
 use hal::blocking::i2c;
-pub struct MCP4728<I2C> {
-    i2c: I2C,
-    address: u8,
-}
 
 #[derive(Debug, PartialEq)]
 pub enum Error<InnerError> {
@@ -18,6 +14,18 @@ impl<InnerError> From<InnerError> for Error<InnerError> {
     fn from(inner: InnerError) -> Self {
         Error::I2CError(inner)
     }
+}
+
+pub enum PowerDownMode {
+    Normal = 0,
+    PowerDownOneK = 1,
+    PowerDownOneHundredK = 2,
+    PowerDownFiveHundredK = 3,
+}
+
+pub struct MCP4728<I2C> {
+    i2c: I2C,
+    address: u8,
 }
 
 impl<I2C, E> MCP4728<I2C>
@@ -45,6 +53,24 @@ where
             bytes[2 * i + 1] = new_bytes[1];
         }
         self.i2c.write(self.address, &bytes).map_err(|e| e.into())
+    }
+
+    pub fn fast_power_down(
+        &mut self,
+        mode_a: &PowerDownMode,
+        mode_b: &PowerDownMode,
+        mode_c: &PowerDownMode,
+        mode_d: &PowerDownMode,
+    ) -> Result<(), Error<E>> {
+        let mut bytes = [0; 8];
+        for (i, &mode) in [mode_a, mode_b, mode_c, mode_d].iter().enumerate() {
+            bytes[2 * i] = (*mode as u8) << 4;
+        }
+        self.i2c.write(self.address, &bytes).map_err(|e| e.into())
+    }
+
+    pub fn fast_power_down_all(&mut self, mode: &PowerDownMode) -> Result<(), Error<E>> {
+        self.fast_power_down(&mode, &mode, &mode, &mode)
     }
 }
 
@@ -135,6 +161,47 @@ mod tests {
         assert_eq!(
             mcp4782.fast_write(0x1000, 0x0000, 0x0000, 0x0000),
             Err(crate::Error::ValueOutOfBounds(0x1000))
+        );
+        assert_eq!(*messages.borrow(), vec![]);
+    }
+
+    #[test]
+    fn fast_power_down() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.fast_power_down(
+                &crate::PowerDownMode::Normal,
+                &crate::PowerDownMode::PowerDownOneK,
+                &crate::PowerDownMode::PowerDownOneHundredK,
+                &crate::PowerDownMode::PowerDownFiveHundredK
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![0x00, 0x00, 0x10, 0x00, 0x20, 0x00, 0x30, 0x00]
+            }]
+        );
+    }
+
+    #[test]
+    fn fast_power_down_i2c_error() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        *i2c.should_fail.borrow_mut() = true;
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.fast_power_down(
+                &crate::PowerDownMode::Normal,
+                &crate::PowerDownMode::PowerDownOneK,
+                &crate::PowerDownMode::PowerDownOneHundredK,
+                &crate::PowerDownMode::PowerDownFiveHundredK
+            ),
+            Err(crate::Error::I2CError(FakeI2CError::WriteError))
         );
         assert_eq!(*messages.borrow(), vec![]);
     }
