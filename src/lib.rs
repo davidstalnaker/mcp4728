@@ -16,11 +16,81 @@ impl<InnerError> From<InnerError> for Error<InnerError> {
     }
 }
 
+pub enum Channel {
+    A = 0,
+    B = 1,
+    C = 2,
+    D = 3,
+}
+
+pub enum OutputEnableMode {
+    Update = 0,
+    NoUpdate = 1,
+}
+
+pub enum VoltageReferenceMode {
+    External = 0,
+    Internal = 1,
+}
+
 pub enum PowerDownMode {
     Normal = 0,
     PowerDownOneK = 1,
     PowerDownOneHundredK = 2,
     PowerDownFiveHundredK = 3,
+}
+
+pub enum GainMode {
+    TimesOne = 0,
+    TimesTwo = 1,
+}
+
+pub struct ChannelState {
+    output_enable_mode: OutputEnableMode,
+    voltage_reference_mode: VoltageReferenceMode,
+    power_down_mode: PowerDownMode,
+    gain_mode: GainMode,
+    value: u16,
+}
+
+impl ChannelState {
+    pub fn new() -> ChannelState {
+        ChannelState {
+            output_enable_mode: OutputEnableMode::Update,
+            voltage_reference_mode: VoltageReferenceMode::External,
+            power_down_mode: PowerDownMode::Normal,
+            gain_mode: GainMode::TimesOne,
+            value: 0,
+        }
+    }
+
+    pub fn output_enable_mode<'a>(&'a mut self, new_val: OutputEnableMode) -> &'a mut ChannelState {
+        self.output_enable_mode = new_val;
+        self
+    }
+
+    pub fn voltage_reference_mode<'a>(
+        &'a mut self,
+        new_val: VoltageReferenceMode,
+    ) -> &'a mut ChannelState {
+        self.voltage_reference_mode = new_val;
+        self
+    }
+
+    pub fn power_down_mode<'a>(&'a mut self, new_val: PowerDownMode) -> &'a mut ChannelState {
+        self.power_down_mode = new_val;
+        self
+    }
+
+    pub fn gain_mode<'a>(&'a mut self, new_val: GainMode) -> &'a mut ChannelState {
+        self.gain_mode = new_val;
+        self
+    }
+
+    pub fn value<'a>(&'a mut self, new_val: u16) -> &'a mut ChannelState {
+        self.value = new_val;
+        self
+    }
 }
 
 pub struct MCP4728<I2C> {
@@ -72,6 +142,32 @@ where
     pub fn fast_power_down_all(&mut self, mode: &PowerDownMode) -> Result<(), Error<E>> {
         self.fast_power_down(&mode, &mode, &mode, &mode)
     }
+
+    pub fn single_write(
+        &mut self,
+        channel: Channel,
+        channel_state: &ChannelState,
+    ) -> Result<(), Error<E>> {
+        // || 0 1 0 1 1 CH CH OE || VR PD PD G D D D D || D D D D D D D D ||
+        // CH = Channel select
+        // OE = Output enable
+        // VR = Voltage reference mode
+        // G = Gain mode
+
+        if channel_state.value > 0x0fff {
+            return Err(Error::ValueOutOfBounds(channel_state.value));
+        }
+        let mut bytes = [0; 3];
+        bytes[0] |= 0b01011000;
+        bytes[0] |= (channel as u8) << 1;
+        bytes[0] |= channel_state.output_enable_mode as u8;
+        bytes[1] |= (channel_state.voltage_reference_mode as u8) << 7;
+        bytes[1] |= (channel_state.power_down_mode as u8) << 5;
+        bytes[1] |= (channel_state.gain_mode as u8) << 4;
+        bytes[1] |= channel_state.value.to_be_bytes()[0];
+        bytes[2] = channel_state.value.to_be_bytes()[1];
+        self.i2c.write(self.address, &bytes).map_err(|e| e.into())
+    }
 }
 
 #[cfg(test)]
@@ -83,7 +179,7 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use crate::MCP4728;
+    use crate::{ChannelState, MCP4728};
 
     #[derive(Debug, PartialEq)]
     struct FakeI2CMessage {
@@ -202,6 +298,63 @@ mod tests {
                 &crate::PowerDownMode::PowerDownFiveHundredK
             ),
             Err(crate::Error::I2CError(FakeI2CError::WriteError))
+        );
+        assert_eq!(*messages.borrow(), vec![]);
+    }
+
+    // || 0 1 0 1 1 CH CH OE || VR PD PD G D D D D || D D D D D D D D ||
+    #[test]
+    fn single_write_default_values() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.single_write(crate::Channel::B, ChannelState::new().value(0x0aaa)),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![0b01011010, 0b00001010, 0b10101010]
+            }]
+        );
+    }
+
+    #[test]
+    fn single_write_set_all_values() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.single_write(
+                crate::Channel::D,
+                ChannelState::new()
+                    .output_enable_mode(crate::OutputEnableMode::NoUpdate)
+                    .voltage_reference_mode(crate::VoltageReferenceMode::Internal)
+                    .power_down_mode(crate::PowerDownMode::PowerDownFiveHundredK)
+                    .gain_mode(crate::GainMode::TimesTwo)
+                    .value(0x0fff)
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![0b01011111, 0b11111111, 0b11111111]
+            }]
+        );
+    }
+
+    #[test]
+    fn single_write_out_of_bounds_error() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.single_write(crate::Channel::B, ChannelState::new().value(0xffff)),
+            Err(crate::Error::ValueOutOfBounds(0xffff))
         );
         assert_eq!(*messages.borrow(), vec![]);
     }
