@@ -168,6 +168,52 @@ where
         bytes[2] = channel_state.value.to_be_bytes()[1];
         self.i2c.write(self.address, &bytes).map_err(|e| e.into())
     }
+
+    pub fn write_voltage_reference_mode(
+        &mut self,
+        mode_a: VoltageReferenceMode,
+        mode_b: VoltageReferenceMode,
+        mode_c: VoltageReferenceMode,
+        mode_d: VoltageReferenceMode,
+    ) -> Result<(), Error<E>> {
+        let mut byte = 0b10000000;
+        byte |= (mode_a as u8) << 3;
+        byte |= (mode_b as u8) << 2;
+        byte |= (mode_c as u8) << 1;
+        byte |= mode_d as u8;
+        self.i2c.write(self.address, &[byte]).map_err(|e| e.into())
+    }
+
+    pub fn write_gain_mode(
+        &mut self,
+        mode_a: GainMode,
+        mode_b: GainMode,
+        mode_c: GainMode,
+        mode_d: GainMode,
+    ) -> Result<(), Error<E>> {
+        let mut byte = 0b11000000;
+        byte |= (mode_a as u8) << 3;
+        byte |= (mode_b as u8) << 2;
+        byte |= (mode_c as u8) << 1;
+        byte |= mode_d as u8;
+        self.i2c.write(self.address, &[byte]).map_err(|e| e.into())
+    }
+
+    pub fn write_power_down_mode(
+        &mut self,
+        mode_a: PowerDownMode,
+        mode_b: PowerDownMode,
+        mode_c: PowerDownMode,
+        mode_d: PowerDownMode,
+    ) -> Result<(), Error<E>> {
+        let mut bytes = [0; 2];
+        bytes[0] = 0b10100000;
+        bytes[0] |= (mode_a as u8) << 2;
+        bytes[0] |= mode_b as u8;
+        bytes[1] |= (mode_c as u8) << 6;
+        bytes[1] |= (mode_d as u8) << 4;
+        self.i2c.write(self.address, &bytes).map_err(|e| e.into())
+    }
 }
 
 #[cfg(test)]
@@ -179,7 +225,7 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use crate::{ChannelState, MCP4728};
+    use crate::*;
 
     #[derive(Debug, PartialEq)]
     struct FakeI2CMessage {
@@ -244,7 +290,7 @@ mod tests {
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
             mcp4782.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000),
-            Err(crate::Error::I2CError(FakeI2CError::WriteError))
+            Err(Error::I2CError(FakeI2CError::WriteError))
         );
         assert_eq!(*messages.borrow(), vec![]);
     }
@@ -256,7 +302,7 @@ mod tests {
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
             mcp4782.fast_write(0x1000, 0x0000, 0x0000, 0x0000),
-            Err(crate::Error::ValueOutOfBounds(0x1000))
+            Err(Error::ValueOutOfBounds(0x1000))
         );
         assert_eq!(*messages.borrow(), vec![]);
     }
@@ -268,10 +314,10 @@ mod tests {
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
             mcp4782.fast_power_down(
-                &crate::PowerDownMode::Normal,
-                &crate::PowerDownMode::PowerDownOneK,
-                &crate::PowerDownMode::PowerDownOneHundredK,
-                &crate::PowerDownMode::PowerDownFiveHundredK
+                &PowerDownMode::Normal,
+                &PowerDownMode::PowerDownOneK,
+                &PowerDownMode::PowerDownOneHundredK,
+                &PowerDownMode::PowerDownFiveHundredK
             ),
             Ok(())
         );
@@ -292,12 +338,12 @@ mod tests {
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
             mcp4782.fast_power_down(
-                &crate::PowerDownMode::Normal,
-                &crate::PowerDownMode::PowerDownOneK,
-                &crate::PowerDownMode::PowerDownOneHundredK,
-                &crate::PowerDownMode::PowerDownFiveHundredK
+                &PowerDownMode::Normal,
+                &PowerDownMode::PowerDownOneK,
+                &PowerDownMode::PowerDownOneHundredK,
+                &PowerDownMode::PowerDownFiveHundredK
             ),
-            Err(crate::Error::I2CError(FakeI2CError::WriteError))
+            Err(Error::I2CError(FakeI2CError::WriteError))
         );
         assert_eq!(*messages.borrow(), vec![]);
     }
@@ -309,7 +355,7 @@ mod tests {
         let messages = Rc::clone(&i2c.messages);
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(crate::Channel::B, ChannelState::new().value(0x0aaa)),
+            mcp4782.single_write(Channel::B, ChannelState::new().value(0x0aaa)),
             Ok(())
         );
         assert_eq!(
@@ -328,12 +374,12 @@ mod tests {
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
             mcp4782.single_write(
-                crate::Channel::D,
+                Channel::D,
                 ChannelState::new()
-                    .output_enable_mode(crate::OutputEnableMode::NoUpdate)
-                    .voltage_reference_mode(crate::VoltageReferenceMode::Internal)
-                    .power_down_mode(crate::PowerDownMode::PowerDownFiveHundredK)
-                    .gain_mode(crate::GainMode::TimesTwo)
+                    .output_enable_mode(OutputEnableMode::NoUpdate)
+                    .voltage_reference_mode(VoltageReferenceMode::Internal)
+                    .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
+                    .gain_mode(GainMode::TimesTwo)
                     .value(0x0fff)
             ),
             Ok(())
@@ -353,9 +399,78 @@ mod tests {
         let messages = Rc::clone(&i2c.messages);
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(crate::Channel::B, ChannelState::new().value(0xffff)),
-            Err(crate::Error::ValueOutOfBounds(0xffff))
+            mcp4782.single_write(Channel::B, ChannelState::new().value(0xffff)),
+            Err(Error::ValueOutOfBounds(0xffff))
         );
         assert_eq!(*messages.borrow(), vec![]);
+    }
+
+    #[test]
+    fn write_voltage_reference_mode() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.write_voltage_reference_mode(
+                VoltageReferenceMode::External,
+                VoltageReferenceMode::Internal,
+                VoltageReferenceMode::External,
+                VoltageReferenceMode::Internal,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![0b10000101]
+            }]
+        );
+    }
+
+    #[test]
+    fn write_gain_mode() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.write_gain_mode(
+                GainMode::TimesOne,
+                GainMode::TimesTwo,
+                GainMode::TimesOne,
+                GainMode::TimesTwo,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![0b11000101]
+            }]
+        );
+    }
+
+    #[test]
+    fn write_power_down_mode() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.write_power_down_mode(
+                PowerDownMode::Normal,
+                PowerDownMode::PowerDownOneK,
+                PowerDownMode::PowerDownOneHundredK,
+                PowerDownMode::PowerDownFiveHundredK,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![0b10100001, 0b10110000]
+            }]
+        );
     }
 }
