@@ -100,7 +100,7 @@ pub struct MCP4728<I2C> {
 
 impl<I2C, E> MCP4728<I2C>
 where
-    I2C: i2c::Write<Error = E>, // I2C: i2c::Write<Error = E> + i2c::Read<Error = E> + i2c::WriteRead<Error = E>,
+    I2C: i2c::Write<Error = E>,
 {
     pub fn new(i2c: I2C, address: u8) -> MCP4728<I2C> {
         MCP4728 { i2c, address }
@@ -152,6 +152,7 @@ where
         // CH = Channel select
         // OE = Output enable
         // VR = Voltage reference mode
+        // PD = Power down mode
         // G = Gain mode
 
         if channel_state.value > 0x0fff {
