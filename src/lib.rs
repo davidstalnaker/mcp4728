@@ -7,6 +7,7 @@ use hal::blocking::i2c;
 #[derive(Debug, PartialEq)]
 pub enum Error<InnerError> {
     ValueOutOfBounds(u16),
+    StartingChannelNotEqualToUpdateLength,
     I2CError(InnerError),
 }
 
@@ -198,6 +199,52 @@ where
             byte_index = (byte_index + 1) % 3;
             if byte_index == 0 {
                 channel_index += 1;
+            }
+            Some(byte)
+        });
+
+        i2c::WriteIter::write(&mut self.i2c, self.address, generator).map_err(|e| e.into())
+    }
+
+    pub fn sequential_write(
+        &mut self,
+        starting_channel: Channel,
+        output_enable_mode: OutputEnableMode,
+        channel_updates: &[&ChannelState],
+    ) -> Result<(), Error<E>> {
+        let expected_updates = 4 - starting_channel as usize;
+        if channel_updates.len() != expected_updates {
+            return Err(Error::StartingChannelNotEqualToUpdateLength);
+        }
+        let mut is_first_byte = true;
+        let mut channel_index = 0;
+        let mut byte_index = 0;
+        let generator = core::iter::from_fn(move || {
+            if channel_index >= channel_updates.len() {
+                return None;
+            }
+            let channel_state = channel_updates.get(channel_index).unwrap();
+            let byte;
+            if is_first_byte {
+                byte = 0b01010000 | (starting_channel as u8) << 1 | output_enable_mode as u8;
+                is_first_byte = false;
+            } else {
+                byte = match byte_index {
+                    0 => {
+                        (channel_state.voltage_reference_mode as u8) << 7
+                            | (channel_state.power_down_mode as u8) << 5
+                            | (channel_state.gain_mode as u8) << 4
+                            | channel_state.value.to_be_bytes()[0]
+                    }
+
+                    1 => channel_state.value.to_be_bytes()[1],
+
+                    _ => panic!("Byte index > 1, this should not happen"),
+                };
+                byte_index = (byte_index + 1) % 2;
+                if byte_index == 0 {
+                    channel_index += 1;
+                }
             }
             Some(byte)
         });
@@ -497,6 +544,57 @@ mod tests {
                 bytes: vec![0b01000000, 0b00000000, 0b00000001, 0b01000010, 0b00000000, 0b00000010]
             }]
         );
+    }
+
+    #[test]
+    fn sequential_write_multiple_values() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.sequential_write(
+                Channel::A,
+                OutputEnableMode::Update,
+                &[
+                    ChannelState::new().value(0x0001),
+                    ChannelState::new().value(0x0002),
+                    ChannelState::new().value(0x0003),
+                    ChannelState::new().value(0x0004),
+                ]
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![
+                    0b01010000, 0b00000000, 0b00000001, 0b00000000, 0b00000010, 0b00000000,
+                    0b00000011, 0b00000000, 0b00000100
+                ]
+            }]
+        );
+    }
+
+    #[test]
+    fn sequential_write_too_many_values() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.sequential_write(
+                Channel::B,
+                OutputEnableMode::Update,
+                &[
+                    ChannelState::new().value(0x0001),
+                    ChannelState::new().value(0x0002),
+                    ChannelState::new().value(0x0003),
+                    ChannelState::new().value(0x0004),
+                ]
+            ),
+            Err(Error::StartingChannelNotEqualToUpdateLength)
+        );
+        assert_eq!(*messages.borrow(), vec![]);
     }
 
     #[test]
