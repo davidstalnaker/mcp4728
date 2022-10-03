@@ -100,7 +100,7 @@ pub struct MCP4728<I2C> {
 
 impl<I2C, E> MCP4728<I2C>
 where
-    I2C: i2c::Write<Error = E>,
+    I2C: i2c::WriteIter<Error = E> + i2c::Write<Error = E>,
 {
     pub fn new(i2c: I2C, address: u8) -> MCP4728<I2C> {
         MCP4728 { i2c, address }
@@ -122,7 +122,7 @@ where
             bytes[2 * i] = new_bytes[0];
             bytes[2 * i + 1] = new_bytes[1];
         }
-        self.i2c.write(self.address, &bytes).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &bytes).map_err(|e| e.into())
     }
 
     pub fn fast_power_down(
@@ -136,7 +136,7 @@ where
         for (i, &mode) in [mode_a, mode_b, mode_c, mode_d].iter().enumerate() {
             bytes[2 * i] = (*mode as u8) << 4;
         }
-        self.i2c.write(self.address, &bytes).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &bytes).map_err(|e| e.into())
     }
 
     pub fn fast_power_down_all(&mut self, mode: &PowerDownMode) -> Result<(), Error<E>> {
@@ -167,7 +167,42 @@ where
         bytes[1] |= (channel_state.gain_mode as u8) << 4;
         bytes[1] |= channel_state.value.to_be_bytes()[0];
         bytes[2] = channel_state.value.to_be_bytes()[1];
-        self.i2c.write(self.address, &bytes).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &bytes).map_err(|e| e.into())
+    }
+
+    pub fn multi_write(
+        &mut self,
+        channel_updates: &[(Channel, &ChannelState)],
+    ) -> Result<(), Error<E>> {
+        let mut channel_index = 0;
+        let mut byte_index = 0;
+        let generator = core::iter::from_fn(move || {
+            if channel_index >= channel_updates.len() {
+                return None;
+            }
+            let (channel, channel_state) = channel_updates.get(channel_index).unwrap();
+            let byte = match byte_index {
+                0 => 0b01000000 | (*channel as u8) << 1 | channel_state.output_enable_mode as u8,
+
+                1 => {
+                    (channel_state.voltage_reference_mode as u8) << 7
+                        | (channel_state.power_down_mode as u8) << 5
+                        | (channel_state.gain_mode as u8) << 4
+                        | channel_state.value.to_be_bytes()[0]
+                }
+
+                2 => channel_state.value.to_be_bytes()[1],
+
+                _ => panic!("Byte index > 2, this should not happen"),
+            };
+            byte_index = (byte_index + 1) % 3;
+            if byte_index == 0 {
+                channel_index += 1;
+            }
+            Some(byte)
+        });
+
+        i2c::WriteIter::write(&mut self.i2c, self.address, generator).map_err(|e| e.into())
     }
 
     pub fn write_voltage_reference_mode(
@@ -182,7 +217,7 @@ where
         byte |= (mode_b as u8) << 2;
         byte |= (mode_c as u8) << 1;
         byte |= mode_d as u8;
-        self.i2c.write(self.address, &[byte]).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &[byte]).map_err(|e| e.into())
     }
 
     pub fn write_gain_mode(
@@ -197,7 +232,7 @@ where
         byte |= (mode_b as u8) << 2;
         byte |= (mode_c as u8) << 1;
         byte |= mode_d as u8;
-        self.i2c.write(self.address, &[byte]).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &[byte]).map_err(|e| e.into())
     }
 
     pub fn write_power_down_mode(
@@ -213,7 +248,7 @@ where
         bytes[0] |= mode_b as u8;
         bytes[1] |= (mode_c as u8) << 6;
         bytes[1] |= (mode_d as u8) << 4;
-        self.i2c.write(self.address, &bytes).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &bytes).map_err(|e| e.into())
     }
 }
 
@@ -223,6 +258,7 @@ mod tests {
 
     use hal::blocking::i2c;
 
+    use core::iter::IntoIterator;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -253,18 +289,28 @@ mod tests {
         }
     }
 
-    impl i2c::Write for FakeI2C {
+    impl i2c::WriteIter for FakeI2C {
         type Error = FakeI2CError;
-        fn write(&mut self, address: u8, bytes: &[u8]) -> Result<(), FakeI2CError> {
+        fn write<B>(&mut self, address: u8, bytes: B) -> Result<(), FakeI2CError>
+        where
+            B: IntoIterator<Item = u8>,
+        {
             if !*self.should_fail.borrow() {
                 self.messages.borrow_mut().push(FakeI2CMessage {
                     address,
-                    bytes: bytes.to_vec(),
+                    bytes: Vec::from_iter(bytes),
                 });
                 Ok(())
             } else {
                 Err(FakeI2CError::WriteError)
             }
+        }
+    }
+
+    impl i2c::Write for FakeI2C {
+        type Error = FakeI2CError;
+        fn write(&mut self, address: u8, bytes: &[u8]) -> Result<(), FakeI2CError> {
+            i2c::WriteIter::write(self, address, bytes.iter().copied())
         }
     }
 
@@ -404,6 +450,53 @@ mod tests {
             Err(Error::ValueOutOfBounds(0xffff))
         );
         assert_eq!(*messages.borrow(), vec![]);
+    }
+
+    #[test]
+    fn multi_write_set_all_values() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.multi_write(&[(
+                Channel::D,
+                ChannelState::new()
+                    .output_enable_mode(OutputEnableMode::NoUpdate)
+                    .voltage_reference_mode(VoltageReferenceMode::Internal)
+                    .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
+                    .gain_mode(GainMode::TimesTwo)
+                    .value(0x0fff)
+            )]),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![0b01000111, 0b11111111, 0b11111111]
+            }]
+        );
+    }
+
+    #[test]
+    fn multi_write_multiple_values() {
+        let i2c = FakeI2C::new();
+        let messages = Rc::clone(&i2c.messages);
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.multi_write(&[
+                (Channel::A, ChannelState::new().value(0x0001)),
+                (Channel::B, ChannelState::new().value(0x0002))
+            ]),
+            Ok(())
+        );
+        assert_eq!(
+            *messages.borrow(),
+            vec![FakeI2CMessage {
+                address: 0x60,
+                bytes: vec![0b01000000, 0b00000000, 0b00000001, 0b01000010, 0b00000000, 0b00000010]
+            }]
+        );
     }
 
     #[test]
