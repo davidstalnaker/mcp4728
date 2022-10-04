@@ -107,6 +107,10 @@ where
         MCP4728 { i2c, address }
     }
 
+    pub fn destroy(self) -> I2C {
+        self.i2c
+    }
+
     pub fn fast_write(
         &mut self,
         val_a: u16,
