@@ -111,6 +111,21 @@ where
         self.i2c
     }
 
+    pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
+        i2c::Write::write(&mut self.i2c, 0x00, &[0b00000110])?;
+        Ok(())
+    }
+
+    pub fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
+        i2c::Write::write(&mut self.i2c, 0x00, &[0b00001001])?;
+        Ok(())
+    }
+
+    pub fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
+        i2c::Write::write(&mut self.i2c, 0x00, &[0b00001000])?;
+        Ok(())
+    }
+
     pub fn fast_write(
         &mut self,
         val_a: u16,
