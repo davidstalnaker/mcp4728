@@ -127,7 +127,8 @@ where
             bytes[2 * i] = new_bytes[0];
             bytes[2 * i + 1] = new_bytes[1];
         }
-        i2c::Write::write(&mut self.i2c, self.address, &bytes).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
+        Ok(())
     }
 
     pub fn fast_power_down(
@@ -141,7 +142,8 @@ where
         for (i, &mode) in [mode_a, mode_b, mode_c, mode_d].iter().enumerate() {
             bytes[2 * i] = (*mode as u8) << 4;
         }
-        i2c::Write::write(&mut self.i2c, self.address, &bytes).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
+        Ok(())
     }
 
     pub fn fast_power_down_all(&mut self, mode: &PowerDownMode) -> Result<(), Error<E>> {
@@ -172,7 +174,8 @@ where
         bytes[1] |= (channel_state.gain_mode as u8) << 4;
         bytes[1] |= channel_state.value.to_be_bytes()[0];
         bytes[2] = channel_state.value.to_be_bytes()[1];
-        i2c::Write::write(&mut self.i2c, self.address, &bytes).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
+        Ok(())
     }
 
     pub fn multi_write(
@@ -207,7 +210,8 @@ where
             Some(byte)
         });
 
-        i2c::WriteIter::write(&mut self.i2c, self.address, generator).map_err(|e| e.into())
+        i2c::WriteIter::write(&mut self.i2c, self.address, generator)?;
+        Ok(())
     }
 
     pub fn sequential_write(
@@ -253,7 +257,8 @@ where
             Some(byte)
         });
 
-        i2c::WriteIter::write(&mut self.i2c, self.address, generator).map_err(|e| e.into())
+        i2c::WriteIter::write(&mut self.i2c, self.address, generator)?;
+        Ok(())
     }
 
     pub fn write_voltage_reference_mode(
@@ -268,7 +273,8 @@ where
         byte |= (mode_b as u8) << 2;
         byte |= (mode_c as u8) << 1;
         byte |= mode_d as u8;
-        i2c::Write::write(&mut self.i2c, self.address, &[byte]).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &[byte])?;
+        Ok(())
     }
 
     pub fn write_gain_mode(
@@ -283,7 +289,8 @@ where
         byte |= (mode_b as u8) << 2;
         byte |= (mode_c as u8) << 1;
         byte |= mode_d as u8;
-        i2c::Write::write(&mut self.i2c, self.address, &[byte]).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &[byte])?;
+        Ok(())
     }
 
     pub fn write_power_down_mode(
@@ -299,7 +306,8 @@ where
         bytes[0] |= mode_b as u8;
         bytes[1] |= (mode_c as u8) << 6;
         bytes[1] |= (mode_d as u8) << 4;
-        i2c::Write::write(&mut self.i2c, self.address, &bytes).map_err(|e| e.into())
+        i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
+        Ok(())
     }
 }
 
