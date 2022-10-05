@@ -59,7 +59,6 @@ pub enum GainMode {
 
 #[derive(Debug, PartialEq)]
 pub struct ChannelState {
-    output_enable_mode: OutputEnableMode,
     voltage_reference_mode: VoltageReferenceMode,
     power_down_mode: PowerDownMode,
     gain_mode: GainMode,
@@ -102,17 +101,11 @@ pub struct Registers {
 impl ChannelState {
     pub fn new() -> ChannelState {
         ChannelState {
-            output_enable_mode: OutputEnableMode::Update,
             voltage_reference_mode: VoltageReferenceMode::External,
             power_down_mode: PowerDownMode::Normal,
             gain_mode: GainMode::TimesOne,
             value: 0,
         }
-    }
-
-    pub fn output_enable_mode(mut self, new_val: OutputEnableMode) -> ChannelState {
-        self.output_enable_mode = new_val;
-        self
     }
 
     pub fn voltage_reference_mode(mut self, new_val: VoltageReferenceMode) -> ChannelState {
@@ -210,6 +203,7 @@ where
     pub fn single_write(
         &mut self,
         channel: Channel,
+        output_enable_mode: OutputEnableMode,
         channel_state: &ChannelState,
     ) -> Result<(), Error<E>> {
         // || 0 1 0 1 1 CH CH OE || VR PD PD G D D D D || D D D D D D D D ||
@@ -225,7 +219,7 @@ where
         let mut bytes = [0; 3];
         bytes[0] |= 0b01011000;
         bytes[0] |= (channel as u8) << 1;
-        bytes[0] |= channel_state.output_enable_mode as u8;
+        bytes[0] |= output_enable_mode as u8;
         bytes[1] |= (channel_state.voltage_reference_mode as u8) << 7;
         bytes[1] |= (channel_state.power_down_mode as u8) << 5;
         bytes[1] |= (channel_state.gain_mode as u8) << 4;
@@ -237,7 +231,7 @@ where
 
     pub fn multi_write(
         &mut self,
-        channel_updates: &[(Channel, &ChannelState)],
+        channel_updates: &[(Channel, OutputEnableMode, &ChannelState)],
     ) -> Result<(), Error<E>> {
         let mut channel_index = 0;
         let mut byte_index = 0;
@@ -245,9 +239,10 @@ where
             if channel_index >= channel_updates.len() {
                 return None;
             }
-            let (channel, channel_state) = channel_updates.get(channel_index).unwrap();
+            let (channel, output_enable_mode, channel_state) =
+                channel_updates.get(channel_index).unwrap();
             let byte = match byte_index {
-                0 => 0b01000000 | (*channel as u8) << 1 | channel_state.output_enable_mode as u8,
+                0 => 0b01000000 | (*channel as u8) << 1 | *output_enable_mode as u8,
 
                 1 => {
                     (channel_state.voltage_reference_mode as u8) << 7
@@ -370,7 +365,6 @@ where
     fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
         ChannelRegisters {
             channel_state: ChannelState {
-                output_enable_mode: OutputEnableMode::Update,
                 voltage_reference_mode: VoltageReferenceMode::try_from(
                     (bytes[1] & 0b10000000) >> 7,
                 )
@@ -571,7 +565,11 @@ mod tests {
         let messages = Rc::clone(&i2c.messages);
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(Channel::B, &ChannelState::new().value(0x0aaa)),
+            mcp4782.single_write(
+                Channel::B,
+                OutputEnableMode::Update,
+                &ChannelState::new().value(0x0aaa)
+            ),
             Ok(())
         );
         assert_eq!(
@@ -591,8 +589,8 @@ mod tests {
         assert_eq!(
             mcp4782.single_write(
                 Channel::D,
+                OutputEnableMode::NoUpdate,
                 &ChannelState::new()
-                    .output_enable_mode(OutputEnableMode::NoUpdate)
                     .voltage_reference_mode(VoltageReferenceMode::Internal)
                     .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
                     .gain_mode(GainMode::TimesTwo)
@@ -615,7 +613,11 @@ mod tests {
         let messages = Rc::clone(&i2c.messages);
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(Channel::B, &ChannelState::new().value(0xffff)),
+            mcp4782.single_write(
+                Channel::B,
+                OutputEnableMode::NoUpdate,
+                &ChannelState::new().value(0xffff)
+            ),
             Err(Error::ValueOutOfBounds(0xffff))
         );
         assert_eq!(*messages.borrow(), vec![]);
@@ -629,8 +631,8 @@ mod tests {
         assert_eq!(
             mcp4782.multi_write(&[(
                 Channel::D,
+                OutputEnableMode::NoUpdate,
                 &ChannelState::new()
-                    .output_enable_mode(OutputEnableMode::NoUpdate)
                     .voltage_reference_mode(VoltageReferenceMode::Internal)
                     .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
                     .gain_mode(GainMode::TimesTwo)
@@ -654,8 +656,16 @@ mod tests {
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
             mcp4782.multi_write(&[
-                (Channel::A, &ChannelState::new().value(0x0001)),
-                (Channel::B, &ChannelState::new().value(0x0002))
+                (
+                    Channel::A,
+                    OutputEnableMode::Update,
+                    &ChannelState::new().value(0x0001)
+                ),
+                (
+                    Channel::B,
+                    OutputEnableMode::Update,
+                    &ChannelState::new().value(0x0002)
+                )
             ]),
             Ok(())
         );
