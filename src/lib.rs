@@ -3,6 +3,7 @@
 extern crate embedded_hal as hal;
 
 use hal::blocking::i2c;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[derive(Debug, PartialEq)]
 pub enum Error<InnerError> {
@@ -17,6 +18,8 @@ impl<InnerError> From<InnerError> for Error<InnerError> {
     }
 }
 
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[repr(u8)]
 pub enum Channel {
     A = 0,
     B = 1,
@@ -24,16 +27,22 @@ pub enum Channel {
     D = 3,
 }
 
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[repr(u8)]
 pub enum OutputEnableMode {
     Update = 0,
     NoUpdate = 1,
 }
 
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[repr(u8)]
 pub enum VoltageReferenceMode {
     External = 0,
     Internal = 1,
 }
 
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[repr(u8)]
 pub enum PowerDownMode {
     Normal = 0,
     PowerDownOneK = 1,
@@ -41,17 +50,53 @@ pub enum PowerDownMode {
     PowerDownFiveHundredK = 3,
 }
 
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[repr(u8)]
 pub enum GainMode {
     TimesOne = 0,
     TimesTwo = 1,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct ChannelState {
     output_enable_mode: OutputEnableMode,
     voltage_reference_mode: VoltageReferenceMode,
     power_down_mode: PowerDownMode,
     gain_mode: GainMode,
     value: u16,
+}
+
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[repr(u8)]
+pub enum ReadyState {
+    Ready = 0,
+    Busy = 1,
+}
+
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[repr(u8)]
+pub enum PowerState {
+    Off = 0,
+    On = 1,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ChannelRegisters {
+    channel_state: ChannelState,
+    ready_state: ReadyState,
+    power_state: PowerState,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Registers {
+    channel_a_input: ChannelRegisters,
+    channel_a_eeprom: ChannelRegisters,
+    channel_b_input: ChannelRegisters,
+    channel_b_eeprom: ChannelRegisters,
+    channel_c_input: ChannelRegisters,
+    channel_c_eeprom: ChannelRegisters,
+    channel_d_input: ChannelRegisters,
+    channel_d_eeprom: ChannelRegisters,
 }
 
 impl ChannelState {
@@ -65,30 +110,27 @@ impl ChannelState {
         }
     }
 
-    pub fn output_enable_mode<'a>(&'a mut self, new_val: OutputEnableMode) -> &'a mut ChannelState {
+    pub fn output_enable_mode(mut self, new_val: OutputEnableMode) -> ChannelState {
         self.output_enable_mode = new_val;
         self
     }
 
-    pub fn voltage_reference_mode<'a>(
-        &'a mut self,
-        new_val: VoltageReferenceMode,
-    ) -> &'a mut ChannelState {
+    pub fn voltage_reference_mode(mut self, new_val: VoltageReferenceMode) -> ChannelState {
         self.voltage_reference_mode = new_val;
         self
     }
 
-    pub fn power_down_mode<'a>(&'a mut self, new_val: PowerDownMode) -> &'a mut ChannelState {
+    pub fn power_down_mode(mut self, new_val: PowerDownMode) -> ChannelState {
         self.power_down_mode = new_val;
         self
     }
 
-    pub fn gain_mode<'a>(&'a mut self, new_val: GainMode) -> &'a mut ChannelState {
+    pub fn gain_mode(mut self, new_val: GainMode) -> ChannelState {
         self.gain_mode = new_val;
         self
     }
 
-    pub fn value<'a>(&'a mut self, new_val: u16) -> &'a mut ChannelState {
+    pub fn value(mut self, new_val: u16) -> ChannelState {
         self.value = new_val;
         self
     }
@@ -101,7 +143,7 @@ pub struct MCP4728<I2C> {
 
 impl<I2C, E> MCP4728<I2C>
 where
-    I2C: i2c::WriteIter<Error = E> + i2c::Write<Error = E>,
+    I2C: i2c::Read<Error = E> + i2c::WriteIter<Error = E> + i2c::Write<Error = E>,
 {
     pub fn new(i2c: I2C, address: u8) -> MCP4728<I2C> {
         MCP4728 { i2c, address }
@@ -324,6 +366,38 @@ where
         i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
         Ok(())
     }
+
+    fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
+        ChannelRegisters {
+            channel_state: ChannelState {
+                output_enable_mode: OutputEnableMode::Update,
+                voltage_reference_mode: VoltageReferenceMode::try_from(
+                    (bytes[1] & 0b10000000) >> 7,
+                )
+                .unwrap(),
+                power_down_mode: PowerDownMode::try_from((bytes[1] & 0b01100000) >> 5).unwrap(),
+                gain_mode: GainMode::try_from((bytes[1] & 0b00010000) >> 4).unwrap(),
+                value: u16::from_be_bytes([bytes[1] & 0b00001111, bytes[2]]),
+            },
+            ready_state: ReadyState::try_from((bytes[0] & 0b10000000) >> 7).unwrap(),
+            power_state: PowerState::try_from((bytes[0] & 0b01000000) >> 6).unwrap(),
+        }
+    }
+
+    pub fn read(&mut self) -> Result<Registers, Error<E>> {
+        let mut bytes = [0; 24];
+        self.i2c.read(self.address, &mut bytes)?;
+        Ok(Registers {
+            channel_a_input: Self::parse_bytes(&bytes[0..3]),
+            channel_a_eeprom: Self::parse_bytes(&bytes[3..6]),
+            channel_b_input: Self::parse_bytes(&bytes[6..9]),
+            channel_b_eeprom: Self::parse_bytes(&bytes[9..12]),
+            channel_c_input: Self::parse_bytes(&bytes[12..15]),
+            channel_c_eeprom: Self::parse_bytes(&bytes[15..18]),
+            channel_d_input: Self::parse_bytes(&bytes[18..21]),
+            channel_d_eeprom: Self::parse_bytes(&bytes[21..24]),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -346,11 +420,13 @@ mod tests {
 
     #[derive(Debug, PartialEq)]
     enum FakeI2CError {
+        ReadError,
         WriteError,
     }
 
     struct FakeI2C {
         messages: Rc<RefCell<Vec<FakeI2CMessage>>>,
+        message_to_read: Rc<RefCell<FakeI2CMessage>>,
         should_fail: Rc<RefCell<bool>>,
     }
 
@@ -358,7 +434,26 @@ mod tests {
         fn new() -> FakeI2C {
             FakeI2C {
                 messages: Rc::new(RefCell::new(vec![])),
+                message_to_read: Rc::new(RefCell::new(FakeI2CMessage {
+                    address: 0,
+                    bytes: vec![],
+                })),
                 should_fail: Rc::new(RefCell::new(false)),
+            }
+        }
+    }
+
+    impl i2c::Read for FakeI2C {
+        type Error = FakeI2CError;
+        fn read(&mut self, address: u8, bytes: &mut [u8]) -> Result<(), FakeI2CError> {
+            let message = self.message_to_read.borrow();
+            if *self.should_fail.borrow() {
+                Err(FakeI2CError::ReadError)
+            } else if message.address != address {
+                Err(FakeI2CError::ReadError)
+            } else {
+                bytes.copy_from_slice(&message.bytes);
+                Ok(())
             }
         }
     }
@@ -476,7 +571,7 @@ mod tests {
         let messages = Rc::clone(&i2c.messages);
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(Channel::B, ChannelState::new().value(0x0aaa)),
+            mcp4782.single_write(Channel::B, &ChannelState::new().value(0x0aaa)),
             Ok(())
         );
         assert_eq!(
@@ -496,7 +591,7 @@ mod tests {
         assert_eq!(
             mcp4782.single_write(
                 Channel::D,
-                ChannelState::new()
+                &ChannelState::new()
                     .output_enable_mode(OutputEnableMode::NoUpdate)
                     .voltage_reference_mode(VoltageReferenceMode::Internal)
                     .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
@@ -520,7 +615,7 @@ mod tests {
         let messages = Rc::clone(&i2c.messages);
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(Channel::B, ChannelState::new().value(0xffff)),
+            mcp4782.single_write(Channel::B, &ChannelState::new().value(0xffff)),
             Err(Error::ValueOutOfBounds(0xffff))
         );
         assert_eq!(*messages.borrow(), vec![]);
@@ -534,7 +629,7 @@ mod tests {
         assert_eq!(
             mcp4782.multi_write(&[(
                 Channel::D,
-                ChannelState::new()
+                &ChannelState::new()
                     .output_enable_mode(OutputEnableMode::NoUpdate)
                     .voltage_reference_mode(VoltageReferenceMode::Internal)
                     .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
@@ -559,8 +654,8 @@ mod tests {
         let mut mcp4782 = MCP4728::new(i2c, 0x60);
         assert_eq!(
             mcp4782.multi_write(&[
-                (Channel::A, ChannelState::new().value(0x0001)),
-                (Channel::B, ChannelState::new().value(0x0002))
+                (Channel::A, &ChannelState::new().value(0x0001)),
+                (Channel::B, &ChannelState::new().value(0x0002))
             ]),
             Ok(())
         );
@@ -583,10 +678,10 @@ mod tests {
                 Channel::A,
                 OutputEnableMode::Update,
                 &[
-                    ChannelState::new().value(0x0001),
-                    ChannelState::new().value(0x0002),
-                    ChannelState::new().value(0x0003),
-                    ChannelState::new().value(0x0004),
+                    &ChannelState::new().value(0x0001),
+                    &ChannelState::new().value(0x0002),
+                    &ChannelState::new().value(0x0003),
+                    &ChannelState::new().value(0x0004),
                 ]
             ),
             Ok(())
@@ -613,10 +708,10 @@ mod tests {
                 Channel::B,
                 OutputEnableMode::Update,
                 &[
-                    ChannelState::new().value(0x0001),
-                    ChannelState::new().value(0x0002),
-                    ChannelState::new().value(0x0003),
-                    ChannelState::new().value(0x0004),
+                    &ChannelState::new().value(0x0001),
+                    &ChannelState::new().value(0x0002),
+                    &ChannelState::new().value(0x0003),
+                    &ChannelState::new().value(0x0004),
                 ]
             ),
             Err(Error::StartingChannelNotEqualToUpdateLength)
@@ -691,5 +786,78 @@ mod tests {
                 bytes: vec![0b10100001, 0b10110000]
             }]
         );
+    }
+
+    #[test]
+    fn read() {
+        let i2c = FakeI2C::new();
+        #[rustfmt::skip]
+        let bytes = vec![
+            0b00000000, 0b00000000, 0b00000000,
+            0b11000000, 0b11111111, 0b11111111,
+            0b01000000, 0b01010101, 0b01010101,
+            0b00000000, 0b00000000, 0b00000000,
+            0b00000000, 0b00000000, 0b00000000,
+            0b00000000, 0b00000000, 0b00000000,
+            0b00000000, 0b00000000, 0b00000000,
+            0b00000000, 0b00000000, 0b00000000,
+        ];
+        *i2c.message_to_read.borrow_mut() = FakeI2CMessage {
+            address: 0x60,
+            bytes: bytes,
+        };
+        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        assert_eq!(
+            mcp4782.read(),
+            Ok(Registers {
+                channel_a_input: ChannelRegisters {
+                    channel_state: ChannelState::new(),
+                    ready_state: ReadyState::Ready,
+                    power_state: PowerState::Off
+                },
+                channel_a_eeprom: ChannelRegisters {
+                    channel_state: ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::Internal)
+                        .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
+                        .gain_mode(GainMode::TimesTwo)
+                        .value(0x0fff),
+                    ready_state: ReadyState::Busy,
+                    power_state: PowerState::On
+                },
+                channel_b_input: ChannelRegisters {
+                    channel_state: ChannelState::new()
+                        .power_down_mode(PowerDownMode::PowerDownOneHundredK)
+                        .gain_mode(GainMode::TimesTwo)
+                        .value(0x0555),
+                    ready_state: ReadyState::Ready,
+                    power_state: PowerState::On
+                },
+                channel_b_eeprom: ChannelRegisters {
+                    channel_state: ChannelState::new(),
+                    ready_state: ReadyState::Ready,
+                    power_state: PowerState::Off
+                },
+                channel_c_input: ChannelRegisters {
+                    channel_state: ChannelState::new(),
+                    ready_state: ReadyState::Ready,
+                    power_state: PowerState::Off
+                },
+                channel_c_eeprom: ChannelRegisters {
+                    channel_state: ChannelState::new(),
+                    ready_state: ReadyState::Ready,
+                    power_state: PowerState::Off
+                },
+                channel_d_input: ChannelRegisters {
+                    channel_state: ChannelState::new(),
+                    ready_state: ReadyState::Ready,
+                    power_state: PowerState::Off
+                },
+                channel_d_eeprom: ChannelRegisters {
+                    channel_state: ChannelState::new(),
+                    ready_state: ReadyState::Ready,
+                    power_state: PowerState::Off
+                },
+            })
+        )
     }
 }
