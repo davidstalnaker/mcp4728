@@ -481,8 +481,8 @@ mod tests {
     fn fast_write() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
-        assert_eq!(mcp4782.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000), Ok(()));
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
+        assert_eq!(mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000), Ok(()));
         assert_eq!(
             *messages.borrow(),
             vec![FakeI2CMessage {
@@ -497,9 +497,9 @@ mod tests {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
         *i2c.should_fail.borrow_mut() = true;
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000),
+            mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000),
             Err(Error::I2CError(FakeI2CError::WriteError))
         );
         assert_eq!(*messages.borrow(), vec![]);
@@ -509,9 +509,9 @@ mod tests {
     fn fast_write_out_of_bounds_error() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.fast_write(0x1000, 0x0000, 0x0000, 0x0000),
+            mcp4728.fast_write(0x1000, 0x0000, 0x0000, 0x0000),
             Err(Error::ValueOutOfBounds(0x1000))
         );
         assert_eq!(*messages.borrow(), vec![]);
@@ -521,9 +521,9 @@ mod tests {
     fn fast_power_down() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.fast_power_down(
+            mcp4728.fast_power_down(
                 &PowerDownMode::Normal,
                 &PowerDownMode::PowerDownOneK,
                 &PowerDownMode::PowerDownOneHundredK,
@@ -545,9 +545,9 @@ mod tests {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
         *i2c.should_fail.borrow_mut() = true;
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.fast_power_down(
+            mcp4728.fast_power_down(
                 &PowerDownMode::Normal,
                 &PowerDownMode::PowerDownOneK,
                 &PowerDownMode::PowerDownOneHundredK,
@@ -563,9 +563,9 @@ mod tests {
     fn single_write_default_values() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(
+            mcp4728.single_write(
                 Channel::B,
                 OutputEnableMode::Update,
                 &ChannelState::new().value(0x0aaa)
@@ -585,9 +585,9 @@ mod tests {
     fn single_write_set_all_values() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(
+            mcp4728.single_write(
                 Channel::D,
                 OutputEnableMode::NoUpdate,
                 &ChannelState::new()
@@ -611,9 +611,9 @@ mod tests {
     fn single_write_out_of_bounds_error() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.single_write(
+            mcp4728.single_write(
                 Channel::B,
                 OutputEnableMode::NoUpdate,
                 &ChannelState::new().value(0xffff)
@@ -627,9 +627,9 @@ mod tests {
     fn multi_write_set_all_values() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.multi_write(&[(
+            mcp4728.multi_write(&[(
                 Channel::D,
                 OutputEnableMode::NoUpdate,
                 &ChannelState::new()
@@ -653,9 +653,9 @@ mod tests {
     fn multi_write_multiple_values() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.multi_write(&[
+            mcp4728.multi_write(&[
                 (
                     Channel::A,
                     OutputEnableMode::Update,
@@ -682,9 +682,9 @@ mod tests {
     fn sequential_write_multiple_values() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.sequential_write(
+            mcp4728.sequential_write(
                 Channel::A,
                 OutputEnableMode::Update,
                 &[
@@ -712,9 +712,9 @@ mod tests {
     fn sequential_write_too_many_values() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.sequential_write(
+            mcp4728.sequential_write(
                 Channel::B,
                 OutputEnableMode::Update,
                 &[
@@ -733,9 +733,9 @@ mod tests {
     fn write_voltage_reference_mode() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.write_voltage_reference_mode(
+            mcp4728.write_voltage_reference_mode(
                 VoltageReferenceMode::External,
                 VoltageReferenceMode::Internal,
                 VoltageReferenceMode::External,
@@ -756,9 +756,9 @@ mod tests {
     fn write_gain_mode() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.write_gain_mode(
+            mcp4728.write_gain_mode(
                 GainMode::TimesOne,
                 GainMode::TimesTwo,
                 GainMode::TimesOne,
@@ -779,9 +779,9 @@ mod tests {
     fn write_power_down_mode() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.write_power_down_mode(
+            mcp4728.write_power_down_mode(
                 PowerDownMode::Normal,
                 PowerDownMode::PowerDownOneK,
                 PowerDownMode::PowerDownOneHundredK,
@@ -816,9 +816,9 @@ mod tests {
             address: 0x60,
             bytes: bytes,
         };
-        let mut mcp4782 = MCP4728::new(i2c, 0x60);
+        let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4782.read(),
+            mcp4728.read(),
             Ok(Registers {
                 channel_a_input: ChannelRegisters {
                     channel_state: ChannelState::new(),
