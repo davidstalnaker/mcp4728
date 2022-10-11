@@ -157,31 +157,32 @@ where
         self.i2c
     }
 
-    pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
-        i2c::Write::write(
-            &mut self.i2c,
-            ADDRESS_GENERAL_CALL,
-            &[COMMAND_GENERAL_CALL_RESET],
-        )?;
+    fn write_bytes(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error<E>> {
+        i2c::Write::write(&mut self.i2c, address, bytes)?;
         Ok(())
+    }
+
+    fn write_iter<B>(&mut self, address: u8, bytes: B) -> Result<(), Error<E>>
+    where
+        B: IntoIterator<Item = u8>,
+    {
+        i2c::WriteIter::write(&mut self.i2c, address, bytes)?;
+        Ok(())
+    }
+
+    pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
+        self.write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_RESET])
     }
 
     pub fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
-        i2c::Write::write(
-            &mut self.i2c,
-            ADDRESS_GENERAL_CALL,
-            &[COMMAND_GENERAL_CALL_WAKE_UP],
-        )?;
-        Ok(())
+        self.write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_WAKE_UP])
     }
 
     pub fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
-        i2c::Write::write(
-            &mut self.i2c,
+        self.write_bytes(
             ADDRESS_GENERAL_CALL,
             &[COMMAND_GENERAL_CALL_SOFTWARE_UPDATE],
-        )?;
-        Ok(())
+        )
     }
 
     pub fn fast_write(
@@ -200,8 +201,7 @@ where
             bytes[2 * i] = new_bytes[0];
             bytes[2 * i + 1] = new_bytes[1];
         }
-        i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
-        Ok(())
+        self.write_bytes(self.address, &bytes)
     }
 
     pub fn fast_power_down(
@@ -215,8 +215,7 @@ where
         for (i, &mode) in [mode_a, mode_b, mode_c, mode_d].iter().enumerate() {
             bytes[2 * i] = (*mode as u8) << 4;
         }
-        i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
-        Ok(())
+        self.write_bytes(self.address, &bytes)
     }
 
     pub fn fast_power_down_all(&mut self, mode: &PowerDownMode) -> Result<(), Error<E>> {
@@ -246,8 +245,7 @@ where
             | (channel_state.gain_mode as u8) << 4
             | channel_state.value.to_be_bytes()[0];
         bytes[2] = channel_state.value.to_be_bytes()[1];
-        i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
-        Ok(())
+        self.write_bytes(self.address, &bytes)
     }
 
     pub fn multi_write(
@@ -283,8 +281,7 @@ where
             Some(byte)
         });
 
-        i2c::WriteIter::write(&mut self.i2c, self.address, generator)?;
-        Ok(())
+        self.write_iter(self.address, generator)
     }
 
     pub fn sequential_write(
@@ -332,8 +329,7 @@ where
             Some(byte)
         });
 
-        i2c::WriteIter::write(&mut self.i2c, self.address, generator)?;
-        Ok(())
+        self.write_iter(self.address, generator)
     }
 
     pub fn write_voltage_reference_mode(
@@ -348,8 +344,7 @@ where
             | (mode_b as u8) << 2
             | (mode_c as u8) << 1
             | mode_d as u8;
-        i2c::Write::write(&mut self.i2c, self.address, &[byte])?;
-        Ok(())
+        self.write_bytes(self.address, &[byte])
     }
 
     pub fn write_gain_mode(
@@ -364,8 +359,7 @@ where
             | (mode_b as u8) << 2
             | (mode_c as u8) << 1
             | mode_d as u8;
-        i2c::Write::write(&mut self.i2c, self.address, &[byte])?;
-        Ok(())
+        self.write_bytes(self.address, &[byte])
     }
 
     pub fn write_power_down_mode(
@@ -378,8 +372,7 @@ where
         let mut bytes = [0; 2];
         bytes[0] = COMMAND_WRITE_POWER_DOWN_MODE | (mode_a as u8) << 2 | mode_b as u8;
         bytes[1] = (mode_c as u8) << 6 | (mode_d as u8) << 4;
-        i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
-        Ok(())
+        self.write_bytes(self.address, &bytes)
     }
 
     fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
