@@ -5,6 +5,17 @@ extern crate embedded_hal as hal;
 use hal::blocking::i2c;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
+const ADDRESS_GENERAL_CALL: u8 = 0x00;
+const COMMAND_GENERAL_CALL_RESET: u8 = 0b00000110;
+const COMMAND_GENERAL_CALL_WAKE_UP: u8 = 0b00001001;
+const COMMAND_GENERAL_CALL_SOFTWARE_UPDATE: u8 = 0b00001000;
+const COMMAND_SINGLE_WRITE: u8 = 0b01011000;
+const COMMAND_MULTI_WRITE: u8 = 0b01000000;
+const COMMAND_SEQUENTIAL_WRITE: u8 = 0b01010000;
+const COMMAND_WRITE_VOLTAGE_REFERENCE_MODE: u8 = 0b10000000;
+const COMMAND_WRITE_GAIN_MODE: u8 = 0b11000000;
+const COMMAND_WRITE_POWER_DOWN_MODE: u8 = 0b10100000;
+
 #[derive(Debug, PartialEq)]
 pub enum Error<InnerError> {
     ValueOutOfBounds(u16),
@@ -147,17 +158,29 @@ where
     }
 
     pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
-        i2c::Write::write(&mut self.i2c, 0x00, &[0b00000110])?;
+        i2c::Write::write(
+            &mut self.i2c,
+            ADDRESS_GENERAL_CALL,
+            &[COMMAND_GENERAL_CALL_RESET],
+        )?;
         Ok(())
     }
 
     pub fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
-        i2c::Write::write(&mut self.i2c, 0x00, &[0b00001001])?;
+        i2c::Write::write(
+            &mut self.i2c,
+            ADDRESS_GENERAL_CALL,
+            &[COMMAND_GENERAL_CALL_WAKE_UP],
+        )?;
         Ok(())
     }
 
     pub fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
-        i2c::Write::write(&mut self.i2c, 0x00, &[0b00001000])?;
+        i2c::Write::write(
+            &mut self.i2c,
+            ADDRESS_GENERAL_CALL,
+            &[COMMAND_GENERAL_CALL_SOFTWARE_UPDATE],
+        )?;
         Ok(())
     }
 
@@ -217,13 +240,11 @@ where
             return Err(Error::ValueOutOfBounds(channel_state.value));
         }
         let mut bytes = [0; 3];
-        bytes[0] |= 0b01011000;
-        bytes[0] |= (channel as u8) << 1;
-        bytes[0] |= output_enable_mode as u8;
-        bytes[1] |= (channel_state.voltage_reference_mode as u8) << 7;
-        bytes[1] |= (channel_state.power_down_mode as u8) << 5;
-        bytes[1] |= (channel_state.gain_mode as u8) << 4;
-        bytes[1] |= channel_state.value.to_be_bytes()[0];
+        bytes[0] = COMMAND_SINGLE_WRITE | (channel as u8) << 1 | output_enable_mode as u8;
+        bytes[1] = (channel_state.voltage_reference_mode as u8) << 7
+            | (channel_state.power_down_mode as u8) << 5
+            | (channel_state.gain_mode as u8) << 4
+            | channel_state.value.to_be_bytes()[0];
         bytes[2] = channel_state.value.to_be_bytes()[1];
         i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
         Ok(())
@@ -242,7 +263,7 @@ where
             let (channel, output_enable_mode, channel_state) =
                 channel_updates.get(channel_index).unwrap();
             let byte = match byte_index {
-                0 => 0b01000000 | (*channel as u8) << 1 | *output_enable_mode as u8,
+                0 => COMMAND_MULTI_WRITE | (*channel as u8) << 1 | *output_enable_mode as u8,
 
                 1 => {
                     (channel_state.voltage_reference_mode as u8) << 7
@@ -286,7 +307,9 @@ where
             let channel_state = channel_updates.get(channel_index).unwrap();
             let byte;
             if is_first_byte {
-                byte = 0b01010000 | (starting_channel as u8) << 1 | output_enable_mode as u8;
+                byte = COMMAND_SEQUENTIAL_WRITE
+                    | (starting_channel as u8) << 1
+                    | output_enable_mode as u8;
                 is_first_byte = false;
             } else {
                 byte = match byte_index {
@@ -320,11 +343,11 @@ where
         mode_c: VoltageReferenceMode,
         mode_d: VoltageReferenceMode,
     ) -> Result<(), Error<E>> {
-        let mut byte = 0b10000000;
-        byte |= (mode_a as u8) << 3;
-        byte |= (mode_b as u8) << 2;
-        byte |= (mode_c as u8) << 1;
-        byte |= mode_d as u8;
+        let byte = COMMAND_WRITE_VOLTAGE_REFERENCE_MODE
+            | (mode_a as u8) << 3
+            | (mode_b as u8) << 2
+            | (mode_c as u8) << 1
+            | mode_d as u8;
         i2c::Write::write(&mut self.i2c, self.address, &[byte])?;
         Ok(())
     }
@@ -336,11 +359,11 @@ where
         mode_c: GainMode,
         mode_d: GainMode,
     ) -> Result<(), Error<E>> {
-        let mut byte = 0b11000000;
-        byte |= (mode_a as u8) << 3;
-        byte |= (mode_b as u8) << 2;
-        byte |= (mode_c as u8) << 1;
-        byte |= mode_d as u8;
+        let byte = COMMAND_WRITE_GAIN_MODE
+            | (mode_a as u8) << 3
+            | (mode_b as u8) << 2
+            | (mode_c as u8) << 1
+            | mode_d as u8;
         i2c::Write::write(&mut self.i2c, self.address, &[byte])?;
         Ok(())
     }
@@ -353,11 +376,8 @@ where
         mode_d: PowerDownMode,
     ) -> Result<(), Error<E>> {
         let mut bytes = [0; 2];
-        bytes[0] = 0b10100000;
-        bytes[0] |= (mode_a as u8) << 2;
-        bytes[0] |= mode_b as u8;
-        bytes[1] |= (mode_c as u8) << 6;
-        bytes[1] |= (mode_d as u8) << 4;
+        bytes[0] = COMMAND_WRITE_POWER_DOWN_MODE | (mode_a as u8) << 2 | mode_b as u8;
+        bytes[1] = (mode_c as u8) << 6 | (mode_d as u8) << 4;
         i2c::Write::write(&mut self.i2c, self.address, &bytes)?;
         Ok(())
     }
