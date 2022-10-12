@@ -344,7 +344,7 @@ where
 {
     pub fn multi_write(
         &mut self,
-        channel_updates: &[(Channel, OutputEnableMode, &ChannelState)],
+        channel_updates: &[(Channel, OutputEnableMode, ChannelState)],
     ) -> Result<(), Error<E>> {
         let mut channel_index = 0;
         let mut byte_index = 0;
@@ -383,7 +383,7 @@ where
         &mut self,
         starting_channel: Channel,
         output_enable_mode: OutputEnableMode,
-        channel_updates: &[&ChannelState],
+        channel_updates: &[ChannelState],
     ) -> Result<(), Error<E>> {
         let expected_updates = 4 - starting_channel as usize;
         if channel_updates.len() != expected_updates {
@@ -649,7 +649,7 @@ mod tests {
             mcp4728.multi_write(&[(
                 Channel::D,
                 OutputEnableMode::NoUpdate,
-                &ChannelState::new()
+                ChannelState::new()
                     .voltage_reference_mode(VoltageReferenceMode::Internal)
                     .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
                     .gain_mode(GainMode::TimesTwo)
@@ -676,12 +676,12 @@ mod tests {
                 (
                     Channel::A,
                     OutputEnableMode::Update,
-                    &ChannelState::new().value(0x0001)
+                    ChannelState::new().value(0x0001)
                 ),
                 (
                     Channel::B,
                     OutputEnableMode::Update,
-                    &ChannelState::new().value(0x0002)
+                    ChannelState::new().value(0x0002)
                 )
             ]),
             Ok(())
@@ -705,10 +705,10 @@ mod tests {
                 Channel::A,
                 OutputEnableMode::Update,
                 &[
-                    &ChannelState::new().value(0x0001),
-                    &ChannelState::new().value(0x0002),
-                    &ChannelState::new().value(0x0003),
-                    &ChannelState::new().value(0x0004),
+                    ChannelState::new().value(0x0001),
+                    ChannelState::new().value(0x0002),
+                    ChannelState::new().value(0x0003),
+                    ChannelState::new().value(0x0004),
                 ]
             ),
             Ok(())
@@ -735,10 +735,10 @@ mod tests {
                 Channel::B,
                 OutputEnableMode::Update,
                 &[
-                    &ChannelState::new().value(0x0001),
-                    &ChannelState::new().value(0x0002),
-                    &ChannelState::new().value(0x0003),
-                    &ChannelState::new().value(0x0004),
+                    ChannelState::new().value(0x0001),
+                    ChannelState::new().value(0x0002),
+                    ChannelState::new().value(0x0003),
+                    ChannelState::new().value(0x0004),
                 ]
             ),
             Err(Error::StartingChannelNotEqualToUpdateLength)
