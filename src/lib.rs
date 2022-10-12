@@ -16,10 +16,23 @@ const COMMAND_WRITE_VOLTAGE_REFERENCE_MODE: u8 = 0b10000000;
 const COMMAND_WRITE_GAIN_MODE: u8 = 0b11000000;
 const COMMAND_WRITE_POWER_DOWN_MODE: u8 = 0b10100000;
 
+// Error type.
+
+/// Error type for the crate, which can represent either an error from this driver or an inner
+/// error that comes from the I2C type.
 #[derive(Debug, PartialEq)]
 pub enum Error<InnerError> {
+    /// A value was larger than the DAC supports.
+    ///
+    /// As it is a 12-bit dac, values must be smaller than 2^12.
     ValueOutOfBounds(u16),
+    /// A sequential write command was issued with a list of updates that didn't match the
+    /// associated starting channel.
+    ///
+    /// For example, a sequential write command that starts with channel B must contain 3 updates:
+    /// for channels B, C, and D.
     StartingChannelNotEqualToUpdateLength,
+    /// Error representing an error that came from the inner I2C driver.
     I2CError(InnerError),
 }
 
@@ -29,7 +42,9 @@ impl<InnerError> From<InnerError> for Error<InnerError> {
     }
 }
 
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+// Enums for configuration.
+
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
 #[repr(u8)]
 pub enum Channel {
     A = 0,
@@ -38,14 +53,14 @@ pub enum Channel {
     D = 3,
 }
 
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
 #[repr(u8)]
 pub enum OutputEnableMode {
     Update = 0,
     NoUpdate = 1,
 }
 
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
 #[repr(u8)]
 pub enum VoltageReferenceMode {
     External = 0,
@@ -61,43 +76,39 @@ pub enum PowerDownMode {
     PowerDownFiveHundredK = 3,
 }
 
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
 #[repr(u8)]
 pub enum GainMode {
     TimesOne = 0,
     TimesTwo = 1,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct ChannelState {
-    voltage_reference_mode: VoltageReferenceMode,
-    power_down_mode: PowerDownMode,
-    gain_mode: GainMode,
-    value: u16,
-}
+// Enums for status from reads.
 
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
 #[repr(u8)]
 pub enum ReadyState {
     Ready = 0,
     Busy = 1,
 }
 
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
 #[repr(u8)]
 pub enum PowerState {
     Off = 0,
     On = 1,
 }
 
-#[derive(Debug, PartialEq)]
+// Container structs.
+
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct ChannelRegisters {
     channel_state: ChannelState,
     ready_state: ReadyState,
     power_state: PowerState,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Registers {
     channel_a_input: ChannelRegisters,
     channel_a_eeprom: ChannelRegisters,
@@ -107,6 +118,14 @@ pub struct Registers {
     channel_c_eeprom: ChannelRegisters,
     channel_d_input: ChannelRegisters,
     channel_d_eeprom: ChannelRegisters,
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub struct ChannelState {
+    voltage_reference_mode: VoltageReferenceMode,
+    power_down_mode: PowerDownMode,
+    gain_mode: GainMode,
+    value: u16,
 }
 
 impl ChannelState {
@@ -140,10 +159,13 @@ impl ChannelState {
     }
 }
 
+/// MCP4728 4-channel 12-bit I2C DAC
 pub struct MCP4728<I2C> {
     i2c: I2C,
     address: u8,
 }
+
+/// Primary implementation, only requires I2C type that implements the Read and Write traits.
 impl<I2C, E> MCP4728<I2C>
 where
     I2C: i2c::Read<Error = E> + i2c::Write<Error = E>,
@@ -315,6 +337,7 @@ where
     }
 }
 
+/// Implementation of functions that require the WriteIter trait.
 impl<I2C, E> MCP4728<I2C>
 where
     I2C: i2c::WriteIter<Error = E>,
