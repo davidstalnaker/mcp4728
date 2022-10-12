@@ -52,7 +52,7 @@ pub enum VoltageReferenceMode {
     Internal = 1,
 }
 
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
 #[repr(u8)]
 pub enum PowerDownMode {
     Normal = 0,
@@ -183,36 +183,31 @@ where
         val_c: u16,
         val_d: u16,
     ) -> Result<(), Error<E>> {
+        self.fast_write_with_power_down_mode(
+            (PowerDownMode::Normal, val_a),
+            (PowerDownMode::Normal, val_b),
+            (PowerDownMode::Normal, val_c),
+            (PowerDownMode::Normal, val_d),
+        )
+    }
+
+    pub fn fast_write_with_power_down_mode(
+        &mut self,
+        val_a: (PowerDownMode, u16),
+        val_b: (PowerDownMode, u16),
+        val_c: (PowerDownMode, u16),
+        val_d: (PowerDownMode, u16),
+    ) -> Result<(), Error<E>> {
         let mut bytes = [0; 8];
-        for (i, &val) in [val_a, val_b, val_c, val_d].iter().enumerate() {
+        for (i, &(mode, val)) in [val_a, val_b, val_c, val_d].iter().enumerate() {
             if val > 0x0fff {
                 return Err(Error::ValueOutOfBounds(val));
             }
-            let new_bytes = val.to_be_bytes();
-            bytes[2 * i] = new_bytes[0];
-            bytes[2 * i + 1] = new_bytes[1];
+            bytes[2 * i] = (mode as u8) << 4 | val.to_be_bytes()[0];
+            bytes[2 * i + 1] = val.to_be_bytes()[1];
         }
         self.i2c.write(self.address, &bytes)?;
         Ok(())
-    }
-
-    pub fn fast_power_down(
-        &mut self,
-        mode_a: &PowerDownMode,
-        mode_b: &PowerDownMode,
-        mode_c: &PowerDownMode,
-        mode_d: &PowerDownMode,
-    ) -> Result<(), Error<E>> {
-        let mut bytes = [0; 8];
-        for (i, &mode) in [mode_a, mode_b, mode_c, mode_d].iter().enumerate() {
-            bytes[2 * i] = (*mode as u8) << 4;
-        }
-        self.i2c.write(self.address, &bytes)?;
-        Ok(())
-    }
-
-    pub fn fast_power_down_all(&mut self, mode: &PowerDownMode) -> Result<(), Error<E>> {
-        self.fast_power_down(&mode, &mode, &mode, &mode)
     }
 
     pub fn single_write(
@@ -535,16 +530,16 @@ mod tests {
     }
 
     #[test]
-    fn fast_power_down() {
+    fn fast_write_with_power_down_mode() {
         let i2c = FakeI2C::new();
         let messages = Rc::clone(&i2c.messages);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
         assert_eq!(
-            mcp4728.fast_power_down(
-                &PowerDownMode::Normal,
-                &PowerDownMode::PowerDownOneK,
-                &PowerDownMode::PowerDownOneHundredK,
-                &PowerDownMode::PowerDownFiveHundredK
+            mcp4728.fast_write_with_power_down_mode(
+                (PowerDownMode::Normal, 0x0aaa),
+                (PowerDownMode::PowerDownOneK, 0x0000),
+                (PowerDownMode::PowerDownOneHundredK, 0x0aaa),
+                (PowerDownMode::PowerDownFiveHundredK, 0x0000),
             ),
             Ok(())
         );
@@ -552,27 +547,9 @@ mod tests {
             *messages.borrow(),
             vec![FakeI2CMessage {
                 address: 0x60,
-                bytes: vec![0x00, 0x00, 0x10, 0x00, 0x20, 0x00, 0x30, 0x00]
+                bytes: vec![0x0a, 0xaa, 0x10, 0x00, 0x2a, 0xaa, 0x30, 0x00]
             }]
         );
-    }
-
-    #[test]
-    fn fast_power_down_i2c_error() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
-        *i2c.should_fail.borrow_mut() = true;
-        let mut mcp4728 = MCP4728::new(i2c, 0x60);
-        assert_eq!(
-            mcp4728.fast_power_down(
-                &PowerDownMode::Normal,
-                &PowerDownMode::PowerDownOneK,
-                &PowerDownMode::PowerDownOneHundredK,
-                &PowerDownMode::PowerDownFiveHundredK
-            ),
-            Err(Error::I2CError(FakeI2CError::WriteError))
-        );
-        assert_eq!(*messages.borrow(), vec![]);
     }
 
     // || 0 1 0 1 1 CH CH OE || VR PD PD G D D D D || D D D D D D D D ||
