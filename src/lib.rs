@@ -144,10 +144,9 @@ pub struct MCP4728<I2C> {
     i2c: I2C,
     address: u8,
 }
-
 impl<I2C, E> MCP4728<I2C>
 where
-    I2C: i2c::Read<Error = E> + i2c::WriteIter<Error = E> + i2c::Write<Error = E>,
+    I2C: i2c::Read<Error = E> + i2c::Write<Error = E>,
 {
     pub fn new(i2c: I2C, address: u8) -> MCP4728<I2C> {
         MCP4728 { i2c, address }
@@ -157,32 +156,24 @@ where
         self.i2c
     }
 
-    fn write_bytes(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error<E>> {
-        i2c::Write::write(&mut self.i2c, address, bytes)?;
-        Ok(())
-    }
-
-    fn write_iter<B>(&mut self, address: u8, bytes: B) -> Result<(), Error<E>>
-    where
-        B: IntoIterator<Item = u8>,
-    {
-        i2c::WriteIter::write(&mut self.i2c, address, bytes)?;
-        Ok(())
-    }
-
     pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
-        self.write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_RESET])
+        self.i2c
+            .write(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_RESET])?;
+        Ok(())
     }
 
     pub fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
-        self.write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_WAKE_UP])
+        self.i2c
+            .write(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_WAKE_UP])?;
+        Ok(())
     }
 
     pub fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
-        self.write_bytes(
+        self.i2c.write(
             ADDRESS_GENERAL_CALL,
             &[COMMAND_GENERAL_CALL_SOFTWARE_UPDATE],
-        )
+        )?;
+        Ok(())
     }
 
     pub fn fast_write(
@@ -201,7 +192,8 @@ where
             bytes[2 * i] = new_bytes[0];
             bytes[2 * i + 1] = new_bytes[1];
         }
-        self.write_bytes(self.address, &bytes)
+        self.i2c.write(self.address, &bytes)?;
+        Ok(())
     }
 
     pub fn fast_power_down(
@@ -215,7 +207,8 @@ where
         for (i, &mode) in [mode_a, mode_b, mode_c, mode_d].iter().enumerate() {
             bytes[2 * i] = (*mode as u8) << 4;
         }
-        self.write_bytes(self.address, &bytes)
+        self.i2c.write(self.address, &bytes)?;
+        Ok(())
     }
 
     pub fn fast_power_down_all(&mut self, mode: &PowerDownMode) -> Result<(), Error<E>> {
@@ -245,9 +238,92 @@ where
             | (channel_state.gain_mode as u8) << 4
             | channel_state.value.to_be_bytes()[0];
         bytes[2] = channel_state.value.to_be_bytes()[1];
-        self.write_bytes(self.address, &bytes)
+        self.i2c.write(self.address, &bytes)?;
+        Ok(())
     }
 
+    pub fn write_voltage_reference_mode(
+        &mut self,
+        mode_a: VoltageReferenceMode,
+        mode_b: VoltageReferenceMode,
+        mode_c: VoltageReferenceMode,
+        mode_d: VoltageReferenceMode,
+    ) -> Result<(), Error<E>> {
+        let byte = COMMAND_WRITE_VOLTAGE_REFERENCE_MODE
+            | (mode_a as u8) << 3
+            | (mode_b as u8) << 2
+            | (mode_c as u8) << 1
+            | mode_d as u8;
+        self.i2c.write(self.address, &[byte])?;
+        Ok(())
+    }
+
+    pub fn write_gain_mode(
+        &mut self,
+        mode_a: GainMode,
+        mode_b: GainMode,
+        mode_c: GainMode,
+        mode_d: GainMode,
+    ) -> Result<(), Error<E>> {
+        let byte = COMMAND_WRITE_GAIN_MODE
+            | (mode_a as u8) << 3
+            | (mode_b as u8) << 2
+            | (mode_c as u8) << 1
+            | mode_d as u8;
+        self.i2c.write(self.address, &[byte])?;
+        Ok(())
+    }
+
+    pub fn write_power_down_mode(
+        &mut self,
+        mode_a: PowerDownMode,
+        mode_b: PowerDownMode,
+        mode_c: PowerDownMode,
+        mode_d: PowerDownMode,
+    ) -> Result<(), Error<E>> {
+        let mut bytes = [0; 2];
+        bytes[0] = COMMAND_WRITE_POWER_DOWN_MODE | (mode_a as u8) << 2 | mode_b as u8;
+        bytes[1] = (mode_c as u8) << 6 | (mode_d as u8) << 4;
+        self.i2c.write(self.address, &bytes)?;
+        Ok(())
+    }
+
+    fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
+        ChannelRegisters {
+            channel_state: ChannelState {
+                voltage_reference_mode: VoltageReferenceMode::try_from(
+                    (bytes[1] & 0b10000000) >> 7,
+                )
+                .unwrap(),
+                power_down_mode: PowerDownMode::try_from((bytes[1] & 0b01100000) >> 5).unwrap(),
+                gain_mode: GainMode::try_from((bytes[1] & 0b00010000) >> 4).unwrap(),
+                value: u16::from_be_bytes([bytes[1] & 0b00001111, bytes[2]]),
+            },
+            ready_state: ReadyState::try_from((bytes[0] & 0b10000000) >> 7).unwrap(),
+            power_state: PowerState::try_from((bytes[0] & 0b01000000) >> 6).unwrap(),
+        }
+    }
+
+    pub fn read(&mut self) -> Result<Registers, Error<E>> {
+        let mut bytes = [0; 24];
+        self.i2c.read(self.address, &mut bytes)?;
+        Ok(Registers {
+            channel_a_input: Self::parse_bytes(&bytes[0..3]),
+            channel_a_eeprom: Self::parse_bytes(&bytes[3..6]),
+            channel_b_input: Self::parse_bytes(&bytes[6..9]),
+            channel_b_eeprom: Self::parse_bytes(&bytes[9..12]),
+            channel_c_input: Self::parse_bytes(&bytes[12..15]),
+            channel_c_eeprom: Self::parse_bytes(&bytes[15..18]),
+            channel_d_input: Self::parse_bytes(&bytes[18..21]),
+            channel_d_eeprom: Self::parse_bytes(&bytes[21..24]),
+        })
+    }
+}
+
+impl<I2C, E> MCP4728<I2C>
+where
+    I2C: i2c::WriteIter<Error = E>,
+{
     pub fn multi_write(
         &mut self,
         channel_updates: &[(Channel, OutputEnableMode, &ChannelState)],
@@ -281,7 +357,8 @@ where
             Some(byte)
         });
 
-        self.write_iter(self.address, generator)
+        self.i2c.write(self.address, generator)?;
+        Ok(())
     }
 
     pub fn sequential_write(
@@ -329,81 +406,8 @@ where
             Some(byte)
         });
 
-        self.write_iter(self.address, generator)
-    }
-
-    pub fn write_voltage_reference_mode(
-        &mut self,
-        mode_a: VoltageReferenceMode,
-        mode_b: VoltageReferenceMode,
-        mode_c: VoltageReferenceMode,
-        mode_d: VoltageReferenceMode,
-    ) -> Result<(), Error<E>> {
-        let byte = COMMAND_WRITE_VOLTAGE_REFERENCE_MODE
-            | (mode_a as u8) << 3
-            | (mode_b as u8) << 2
-            | (mode_c as u8) << 1
-            | mode_d as u8;
-        self.write_bytes(self.address, &[byte])
-    }
-
-    pub fn write_gain_mode(
-        &mut self,
-        mode_a: GainMode,
-        mode_b: GainMode,
-        mode_c: GainMode,
-        mode_d: GainMode,
-    ) -> Result<(), Error<E>> {
-        let byte = COMMAND_WRITE_GAIN_MODE
-            | (mode_a as u8) << 3
-            | (mode_b as u8) << 2
-            | (mode_c as u8) << 1
-            | mode_d as u8;
-        self.write_bytes(self.address, &[byte])
-    }
-
-    pub fn write_power_down_mode(
-        &mut self,
-        mode_a: PowerDownMode,
-        mode_b: PowerDownMode,
-        mode_c: PowerDownMode,
-        mode_d: PowerDownMode,
-    ) -> Result<(), Error<E>> {
-        let mut bytes = [0; 2];
-        bytes[0] = COMMAND_WRITE_POWER_DOWN_MODE | (mode_a as u8) << 2 | mode_b as u8;
-        bytes[1] = (mode_c as u8) << 6 | (mode_d as u8) << 4;
-        self.write_bytes(self.address, &bytes)
-    }
-
-    fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
-        ChannelRegisters {
-            channel_state: ChannelState {
-                voltage_reference_mode: VoltageReferenceMode::try_from(
-                    (bytes[1] & 0b10000000) >> 7,
-                )
-                .unwrap(),
-                power_down_mode: PowerDownMode::try_from((bytes[1] & 0b01100000) >> 5).unwrap(),
-                gain_mode: GainMode::try_from((bytes[1] & 0b00010000) >> 4).unwrap(),
-                value: u16::from_be_bytes([bytes[1] & 0b00001111, bytes[2]]),
-            },
-            ready_state: ReadyState::try_from((bytes[0] & 0b10000000) >> 7).unwrap(),
-            power_state: PowerState::try_from((bytes[0] & 0b01000000) >> 6).unwrap(),
-        }
-    }
-
-    pub fn read(&mut self) -> Result<Registers, Error<E>> {
-        let mut bytes = [0; 24];
-        self.i2c.read(self.address, &mut bytes)?;
-        Ok(Registers {
-            channel_a_input: Self::parse_bytes(&bytes[0..3]),
-            channel_a_eeprom: Self::parse_bytes(&bytes[3..6]),
-            channel_b_input: Self::parse_bytes(&bytes[6..9]),
-            channel_b_eeprom: Self::parse_bytes(&bytes[9..12]),
-            channel_c_input: Self::parse_bytes(&bytes[12..15]),
-            channel_c_eeprom: Self::parse_bytes(&bytes[15..18]),
-            channel_d_input: Self::parse_bytes(&bytes[18..21]),
-            channel_d_eeprom: Self::parse_bytes(&bytes[21..24]),
-        })
+        self.i2c.write(self.address, generator)?;
+        Ok(())
     }
 }
 
