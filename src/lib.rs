@@ -9,8 +9,8 @@
 //! use linux_embedded_hal::I2cdev;
 //! use mcp4728::{MCP4728};
 //!
-//! let dev = I2cdev::new("/dev/i2c-1")?;
-//! let mut dac = MCP4728::new(dev, 0x60);
+//! let i2c = I2cdev::new("/dev/i2c-1")?;
+//! let mut i2c = MCP4728::new(dev, 0x60);
 //! dac.fast_write(483, 279, 297, 590)?;
 //! # }
 //! ```
@@ -36,7 +36,7 @@ const COMMAND_WRITE_POWER_DOWN_MODE: u8 = 0b10100000;
 
 /// Error type for the crate, which can represent either an error from this driver or an inner
 /// error that comes from the I2C type.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error<InnerError> {
     /// A value was larger than the DAC supports.
     ///
@@ -63,7 +63,7 @@ impl<InnerError> From<InnerError> for Error<InnerError> {
 // Enums for configuration.
 
 /// Output channel selection.
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(u8)]
 pub enum Channel {
     A = 0,
@@ -73,7 +73,7 @@ pub enum Channel {
 }
 
 /// Configuration bit for whether to update the analog output.
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(u8)]
 pub enum OutputEnableMode {
     /// The analog output will be updated immediately after the command is received.
@@ -87,7 +87,7 @@ pub enum OutputEnableMode {
 }
 
 /// Configuration bit for which voltage reference a channel should use.
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(u8)]
 pub enum VoltageReferenceMode {
     /// Use the external pin VDD as a voltage reference.
@@ -97,7 +97,7 @@ pub enum VoltageReferenceMode {
 }
 
 /// Configuration bits for the powered-down state of a channel.
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(u8)]
 pub enum PowerDownMode {
     /// Channel is not powered down.
@@ -114,7 +114,7 @@ pub enum PowerDownMode {
 ///
 /// If the channel is using an external reference, this bit is ignored and a gain of 1x is always
 /// used.
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(u8)]
 pub enum GainMode {
     /// Gain is set to unity (1x).
@@ -126,7 +126,7 @@ pub enum GainMode {
 // Enums for status from reads.
 
 /// Status of the EEPROM.
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(u8)]
 pub enum ReadyState {
     /// The EEPROM is not busy.
@@ -138,7 +138,7 @@ pub enum ReadyState {
 }
 
 /// The power-on state of the entire device.
-#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Copy, Clone)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(u8)]
 pub enum PowerState {
     /// The device is powered off.
@@ -152,7 +152,7 @@ pub enum PowerState {
 /// Representation of all registers of an individual channel.
 ///
 /// Used only for reads.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct ChannelRegisters {
     /// All mode configuration bits and value of the channel.
     pub channel_state: ChannelState,
@@ -171,7 +171,7 @@ pub struct ChannelRegisters {
 /// Representation of all registers of all channels.
 ///
 /// Used only for reads.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Registers {
     /// Contents of the DAC input register for channel A.
     pub channel_a_input: ChannelRegisters,
@@ -192,7 +192,7 @@ pub struct Registers {
 }
 
 /// Representation of the register of an indivdual channel.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct ChannelState {
     /// The voltage reference mode.
     pub voltage_reference_mode: VoltageReferenceMode,
@@ -240,6 +240,12 @@ impl ChannelState {
     pub fn value(mut self, new_val: u16) -> ChannelState {
         self.value = new_val;
         self
+    }
+}
+
+impl Default for ChannelState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -344,7 +350,7 @@ where
 
     fn write_bytes(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error<Self::Error>> {
         self.i2c
-            .write(address, bytes.into_iter().copied())
+            .write(address, bytes.iter().copied())
             .map_err(Error::I2CError)
     }
 
