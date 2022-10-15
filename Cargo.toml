@@ -13,3 +13,6 @@ categories = ["no-std", "embedded", "hardware-support"]
 [dependencies]
 embedded-hal = "0.2.7"
 num_enum = "0.5.7"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+linux-embedded-hal = "0.3.2"

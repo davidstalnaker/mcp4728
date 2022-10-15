@@ -1,3 +1,19 @@
+//! # Rust driver for MCP4728 4-channel 12-bit I2C DAC
+//!
+//! This is a platform agnostic rust driver for the MCP4728 DAC using the [embedded-hal](https://github.com/rust-embedded/embedded-hal) traits.
+//!
+//! # Example
+//!
+//! ```no_run
+//! # #[cfg(target_os = "linux")] {
+//! use linux_embedded_hal::I2cdev;
+//! use mcp4728::{MCP4728};
+//!
+//! let dev = I2cdev::new("/dev/i2c-1")?;
+//! let mut dac = MCP4728::new(dev, 0x60);
+//! dac.fast_write(483, 279, 297, 590)?;
+//! # }
+//! ```
 #![cfg_attr(not(test), no_std)]
 
 extern crate embedded_hal as hal;
@@ -231,7 +247,8 @@ impl ChannelState {
 ///
 /// This allows for usage by devices that implement different embedded_hal traits.  Also all
 /// functions return the crate [`Error`] type for convenience.
-trait I2CInterface {
+#[doc(hidden)]
+pub trait I2CInterface {
     type I2C;
     type Error;
 
