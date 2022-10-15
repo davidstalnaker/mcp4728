@@ -384,25 +384,37 @@ where
         }
     }
 }
-
+/// Implementation of all commands given a generic I2CInterface.
+///
+/// # Errors
+///
+/// Any errors encountered within the I2C device will be wrapped in [`Error::I2CError`].
 impl<B, I2C, E> MCP4728<B>
 where
     B: I2CInterface<I2C = I2C, Error = E>,
 {
+    /// Destroy this instance and return the inner I2C bus.
     pub fn release(self) -> I2C {
         self.i2c.release()
     }
 
+    /// Issues a general call command (address 0x00) to reset the device.  All MCP4728 devices
+    /// on the bus will load the values from EEPROM into the output registers and update the
+    /// output voltage.
     pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
         self.i2c
             .write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_RESET])
     }
 
+    /// Issues a general call command (address 0x00) to wake up the device.  All MCP4728 devices
+    /// on the bus will reset the power down bits and turn on all channels.
     pub fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
         self.i2c
             .write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_WAKE_UP])
     }
 
+    /// Issues a general call command (address 0x00) to update software.  All MCP4728 devices
+    /// on the bus will immediately update the output voltage.
     pub fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
         self.i2c.write_bytes(
             ADDRESS_GENERAL_CALL,
@@ -410,6 +422,13 @@ where
         )
     }
 
+    /// Updates the values of all four channels and sets them to be powered on (e.g.
+    /// [`PowerDownMode::Normal`] is set).
+    ///
+    /// This command writes to the output registers directly and does not affect the EEPROM.  The
+    /// voltage reference mode and gain mode are not affected. The actual voltage output will be
+    /// updated as bytes are recieved if the LDAC pin is set low, or can be updated together by
+    /// toggling LDAC from high to low after sending this command.  
     pub fn fast_write(
         &mut self,
         val_a: u16,
@@ -425,6 +444,12 @@ where
         )
     }
 
+    /// Updates the values of all four channels and sets their corresponding [`PowerDownMode`]s.
+    ///
+    /// This command writes to the output registers directly and does not affect the EEPROM.  The
+    /// voltage reference mode and gain mode are not affected. The actual voltage output will be
+    /// updated as bytes are recieved if the LDAC pin is set low, or can be updated together by
+    /// toggling LDAC from high to low after sending this command.  
     pub fn fast_write_with_power_down_mode(
         &mut self,
         val_a: (PowerDownMode, u16),
