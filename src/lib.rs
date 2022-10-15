@@ -26,6 +26,8 @@ pub enum Error<InnerError> {
     ///
     /// The MCP4728 is a 12-bit DAC, so values that it writes must be smaller than 2^12.
     ValueOutOfBounds(u16),
+    /// An internal buffer overflowed.
+    BufferOverflow,
     /// A sequential write command was issued with a list of updates that didn't match the
     /// associated starting channel.
     ///
@@ -225,43 +227,187 @@ impl ChannelState {
     }
 }
 
-/// MCP4728 4-channel 12-bit I2C DAC.
-pub struct MCP4728<I2C> {
-    i2c: I2C,
-    address: u8,
+/// Trait to abstract away the I2C bus.
+///
+/// This allows for usage by devices that implement different embedded_hal traits.  Also all
+/// functions return the crate [`Error`] type for convenience.
+trait I2CInterface {
+    type I2C;
+    type Error;
+
+    /// Send a read command to the given address and read until the buffer is full.
+    fn read(&mut self, address: u8, buffer: &mut [u8]) -> Result<(), Error<Self::Error>>;
+
+    /// Send a write command to the given address followed by all of the bytes.
+    fn write_bytes(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error<Self::Error>>;
+
+    /// Send a write command to the given address followed by all of the bytes.
+    fn write_iter<B>(&mut self, address: u8, bytes: B) -> Result<(), Error<Self::Error>>
+    where
+        B: IntoIterator<Item = u8>;
+
+    /// Destroy this instance and return the inner I2C bus.
+    fn release(self) -> Self::I2C;
 }
 
-/// Primary implementation, only requires I2C type that implements the Read and Write traits.
-impl<I2C, E> MCP4728<I2C>
+struct I2CInterfaceDefault<I2C> {
+    i2c: I2C,
+}
+
+impl<I2C, E> I2CInterfaceDefault<I2C>
 where
     I2C: i2c::Read<Error = E> + i2c::Write<Error = E>,
 {
-    pub fn new(i2c: I2C, address: u8) -> MCP4728<I2C> {
-        MCP4728 { i2c, address }
+    fn new(i2c: I2C) -> Self {
+        Self { i2c }
+    }
+}
+
+impl<I2C, E> I2CInterface for I2CInterfaceDefault<I2C>
+where
+    I2C: i2c::Read<Error = E> + i2c::Write<Error = E>,
+{
+    type I2C = I2C;
+    type Error = E;
+
+    fn read(&mut self, address: u8, buffer: &mut [u8]) -> Result<(), Error<Self::Error>> {
+        self.i2c.read(address, buffer).map_err(Error::I2CError)
     }
 
-    pub fn destroy(self) -> I2C {
+    fn write_bytes(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error<Self::Error>> {
+        self.i2c.write(address, bytes).map_err(Error::I2CError)
+    }
+
+    fn write_iter<B>(&mut self, address: u8, bytes: B) -> Result<(), Error<Self::Error>>
+    where
+        B: IntoIterator<Item = u8>,
+    {
+        let mut buffer = [0; 12];
+        let mut i = 0;
+        for b in bytes {
+            if i >= 12 {
+                return Err(Error::BufferOverflow);
+            }
+            buffer[i] = b;
+            i += 1;
+        }
         self.i2c
+            .write(address, &buffer[0..i])
+            .map_err(Error::I2CError)
+    }
+
+    fn release(self) -> Self::I2C {
+        self.i2c
+    }
+}
+
+struct I2CInterfaceIter<I2C> {
+    i2c: I2C,
+}
+
+impl<I2C, E> I2CInterfaceIter<I2C>
+where
+    I2C: i2c::Read<Error = E> + i2c::WriteIter<Error = E>,
+{
+    fn new(i2c: I2C) -> Self {
+        Self { i2c }
+    }
+}
+
+impl<I2C, E> I2CInterface for I2CInterfaceIter<I2C>
+where
+    I2C: i2c::Read<Error = E> + i2c::WriteIter<Error = E>,
+{
+    type I2C = I2C;
+    type Error = E;
+
+    fn read(&mut self, address: u8, buffer: &mut [u8]) -> Result<(), Error<Self::Error>> {
+        self.i2c.read(address, buffer).map_err(Error::I2CError)
+    }
+
+    fn write_bytes(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error<Self::Error>> {
+        self.i2c
+            .write(address, bytes.into_iter().copied())
+            .map_err(Error::I2CError)
+    }
+
+    fn write_iter<B>(&mut self, address: u8, bytes: B) -> Result<(), Error<Self::Error>>
+    where
+        B: IntoIterator<Item = u8>,
+    {
+        self.i2c.write(address, bytes).map_err(Error::I2CError)
+    }
+
+    fn release(self) -> Self::I2C {
+        self.i2c
+    }
+}
+
+/// MCP4728 4-channel 12-bit I2C DAC.
+pub struct MCP4728<B> {
+    i2c: B,
+    address: u8,
+}
+
+impl<I2C, E> MCP4728<I2CInterfaceDefault<I2C>>
+where
+    I2C: i2c::Read<Error = E> + i2c::Write<Error = E>,
+{
+    /// Creates a new [`MCP4728`] from an I2C device that implements the common
+    /// [`embedded_hal::blocking::i2c::Read`] and [`embedded_hal::blocking::i2c::Write`] traits.
+    ///
+    /// Some methods (`multi_write` and `sequential_write`) write a variable number of bytes,
+    /// which is not possible to do in the general case with these trait bounds and without
+    /// allocation. To work around this we use a 12-byte buffer and return an
+    /// [`Error::BufferOverflow`] if a write is larger than that.  In practice, there's not really
+    /// a reason to write more than 4 values to this 4 channel DAC, and 12 bytes is sufficient for
+    /// that.
+    pub fn new(i2c: I2C, address: u8) -> Self {
+        MCP4728 {
+            i2c: I2CInterfaceDefault::new(i2c),
+            address,
+        }
+    }
+}
+
+impl<I2C, E> MCP4728<I2CInterfaceIter<I2C>>
+where
+    I2C: i2c::Read<Error = E> + i2c::WriteIter<Error = E>,
+{
+    /// Creates a new [`MCP4728`] from an I2C device that implements the common
+    /// [`embedded_hal::blocking::i2c::Read`] and less commonly implemented
+    /// [`embedded_hal::blocking::i2c::WriteIter`] traits.
+    pub fn from_i2c_iter(i2c: I2C, address: u8) -> Self {
+        MCP4728 {
+            i2c: I2CInterfaceIter::new(i2c),
+            address,
+        }
+    }
+}
+
+impl<B, I2C, E> MCP4728<B>
+where
+    B: I2CInterface<I2C = I2C, Error = E>,
+{
+    pub fn release(self) -> I2C {
+        self.i2c.release()
     }
 
     pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
         self.i2c
-            .write(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_RESET])?;
-        Ok(())
+            .write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_RESET])
     }
 
     pub fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
         self.i2c
-            .write(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_WAKE_UP])?;
-        Ok(())
+            .write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_WAKE_UP])
     }
 
     pub fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
-        self.i2c.write(
+        self.i2c.write_bytes(
             ADDRESS_GENERAL_CALL,
             &[COMMAND_GENERAL_CALL_SOFTWARE_UPDATE],
-        )?;
-        Ok(())
+        )
     }
 
     pub fn fast_write(
@@ -294,8 +440,7 @@ where
             bytes[2 * i] = (mode as u8) << 4 | val.to_be_bytes()[0];
             bytes[2 * i + 1] = val.to_be_bytes()[1];
         }
-        self.i2c.write(self.address, &bytes)?;
-        Ok(())
+        self.i2c.write_bytes(self.address, &bytes)
     }
 
     pub fn single_write(
@@ -321,8 +466,7 @@ where
             | (channel_state.gain_mode as u8) << 4
             | channel_state.value.to_be_bytes()[0];
         bytes[2] = channel_state.value.to_be_bytes()[1];
-        self.i2c.write(self.address, &bytes)?;
-        Ok(())
+        self.i2c.write_bytes(self.address, &bytes)
     }
 
     pub fn write_voltage_reference_mode(
@@ -337,8 +481,7 @@ where
             | (mode_b as u8) << 2
             | (mode_c as u8) << 1
             | mode_d as u8;
-        self.i2c.write(self.address, &[byte])?;
-        Ok(())
+        self.i2c.write_bytes(self.address, &[byte])
     }
 
     pub fn write_gain_mode(
@@ -353,8 +496,7 @@ where
             | (mode_b as u8) << 2
             | (mode_c as u8) << 1
             | mode_d as u8;
-        self.i2c.write(self.address, &[byte])?;
-        Ok(())
+        self.i2c.write_bytes(self.address, &[byte])
     }
 
     pub fn write_power_down_mode(
@@ -367,8 +509,7 @@ where
         let mut bytes = [0; 2];
         bytes[0] = COMMAND_WRITE_POWER_DOWN_MODE | (mode_a as u8) << 2 | mode_b as u8;
         bytes[1] = (mode_c as u8) << 6 | (mode_d as u8) << 4;
-        self.i2c.write(self.address, &bytes)?;
-        Ok(())
+        self.i2c.write_bytes(self.address, &bytes)
     }
 
     fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
@@ -401,13 +542,7 @@ where
             channel_d_eeprom: Self::parse_bytes(&bytes[21..24]),
         })
     }
-}
 
-/// Implementation of functions that require the WriteIter trait.
-impl<I2C, E> MCP4728<I2C>
-where
-    I2C: i2c::WriteIter<Error = E>,
-{
     pub fn multi_write(
         &mut self,
         channel_updates: &[(Channel, OutputEnableMode, ChannelState)],
@@ -441,8 +576,7 @@ where
             Some(byte)
         });
 
-        self.i2c.write(self.address, generator)?;
-        Ok(())
+        self.i2c.write_iter(self.address, generator)
     }
 
     pub fn sequential_write(
@@ -490,8 +624,7 @@ where
             Some(byte)
         });
 
-        self.i2c.write(self.address, generator)?;
-        Ok(())
+        self.i2c.write_iter(self.address, generator)
     }
 }
 
@@ -885,16 +1018,16 @@ mod tests {
     fn read() {
         let i2c = FakeI2C::new();
         #[rustfmt::skip]
-        let bytes = vec![
-            0b00000000, 0b00000000, 0b00000000,
-            0b11000000, 0b11111111, 0b11111111,
-            0b01000000, 0b01010101, 0b01010101,
-            0b00000000, 0b00000000, 0b00000000,
-            0b00000000, 0b00000000, 0b00000000,
-            0b00000000, 0b00000000, 0b00000000,
-            0b00000000, 0b00000000, 0b00000000,
-            0b00000000, 0b00000000, 0b00000000,
-        ];
+            let bytes = vec![
+                0b00000000, 0b00000000, 0b00000000,
+                0b11000000, 0b11111111, 0b11111111,
+                0b01000000, 0b01010101, 0b01010101,
+                0b00000000, 0b00000000, 0b00000000,
+                0b00000000, 0b00000000, 0b00000000,
+                0b00000000, 0b00000000, 0b00000000,
+                0b00000000, 0b00000000, 0b00000000,
+                0b00000000, 0b00000000, 0b00000000,
+            ];
         *i2c.message_to_read.borrow_mut() = FakeI2CMessage {
             address: 0x60,
             bytes: bytes,
