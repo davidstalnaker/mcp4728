@@ -34,8 +34,8 @@ const COMMAND_WRITE_POWER_DOWN_MODE: u8 = 0b10100000;
 
 // Error type.
 
-/// Error type for the crate, which can represent either an error from this driver or an inner
-/// error that comes from the I2C type.
+/// Error type for the crate, which can represent either an error from this driver or an inner error
+/// that comes from the I2C type.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error<InnerError> {
     /// A value was larger than the DAC supports.
@@ -158,13 +158,13 @@ pub struct ChannelRegisters {
     pub channel_state: ChannelState,
     /// The EEPROM Ready state of the device.
     ///
-    /// Note that this is global to the entire device, but the protocol reports it for each
-    /// channel so that is duplicated here.
+    /// Note that this is global to the entire device, but the protocol reports it for each channel
+    /// so that is duplicated here.
     pub ready_state: ReadyState,
     /// The Power-on-reset state of the device.
     ///
-    /// Note that this is global to the entire device, but the protocol reports it for each
-    /// channel so that is duplicated here.
+    /// Note that this is global to the entire device, but the protocol reports it for each channel
+    /// so that is duplicated here.
     pub power_state: PowerState,
 }
 
@@ -207,8 +207,8 @@ pub struct ChannelState {
 }
 
 impl ChannelState {
-    /// Creates a ChannelState with all bits set to 0: external voltage reference, powered on,
-    /// x1 gain, and value of 0.
+    /// Creates a ChannelState with all bits set to 0: external voltage reference, powered on, x1
+    /// gain, and value of 0.
     pub fn new() -> ChannelState {
         ChannelState {
             voltage_reference_mode: VoltageReferenceMode::External,
@@ -381,12 +381,11 @@ where
     /// Creates a new [`MCP4728`] from an I2C device that implements the common
     /// [`embedded_hal::blocking::i2c::Read`] and [`embedded_hal::blocking::i2c::Write`] traits.
     ///
-    /// Some methods (`multi_write` and `sequential_write`) write a variable number of bytes,
-    /// which is not possible to do in the general case with these trait bounds and without
-    /// allocation. To work around this we use a 12-byte buffer and return an
-    /// [`Error::BufferOverflow`] if a write is larger than that.  In practice, there's not really
-    /// a reason to write more than 4 values to this 4 channel DAC, and 12 bytes is sufficient for
-    /// that.
+    /// Some methods (`multi_write` and `sequential_write`) write a variable number of bytes, which
+    /// is not possible to do in the general case with these trait bounds and without allocation. To
+    /// work around this we use a 12-byte buffer and return an [`Error::BufferOverflow`] if a write
+    /// is larger than that.  In practice, there's not really a reason to write more than 4 values
+    /// to this 4 channel DAC, and 12 bytes is sufficient for that.
     pub fn new(i2c: I2C, address: u8) -> Self {
         MCP4728 {
             i2c: I2CInterfaceDefault::new(i2c),
@@ -423,23 +422,23 @@ where
         self.i2c.release()
     }
 
-    /// Issues a general call command (address 0x00) to reset the device.  All MCP4728 devices
-    /// on the bus will load the values from EEPROM into the output registers and update the
-    /// output voltage.
+    /// Issues a general call command (address 0x00) to reset the device.  All MCP4728 devices on
+    /// the bus will load the values from EEPROM into the output registers and update the output
+    /// voltage.
     pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
         self.i2c
             .write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_RESET])
     }
 
-    /// Issues a general call command (address 0x00) to wake up the device.  All MCP4728 devices
-    /// on the bus will reset the power down bits and turn on all channels.
+    /// Issues a general call command (address 0x00) to wake up the device.  All MCP4728 devices on
+    /// the bus will reset the power down bits and turn on all channels.
     pub fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
         self.i2c
             .write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_WAKE_UP])
     }
 
-    /// Issues a general call command (address 0x00) to update software.  All MCP4728 devices
-    /// on the bus will immediately update the output voltage.
+    /// Issues a general call command (address 0x00) to update software.  All MCP4728 devices on the
+    /// bus will immediately update the output voltage.
     pub fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
         self.i2c.write_bytes(
             ADDRESS_GENERAL_CALL,
@@ -447,13 +446,26 @@ where
         )
     }
 
-    /// Updates the values of all four channels and sets them to be powered on (e.g.
+    /// Updates the values of all four channels and sets them to be powered on (i.e.
     /// [`PowerDownMode::Normal`] is set).
     ///
     /// This command writes to the output registers directly and does not affect the EEPROM.  The
-    /// voltage reference mode and gain mode are not affected. The actual voltage output will be
-    /// updated as bytes are recieved if the LDAC pin is set low, or can be updated together by
-    /// toggling LDAC from high to low after sending this command.  
+    /// voltage reference mode and gain mode are not affected.
+    ///
+    /// # Updating the analog outputs
+    ///
+    /// This command writes to the input register but does not necessarily update the analog output.
+    /// There are several ways to do so:
+    ///
+    ///   - If the LDAC pin is set low, the output will be updated after the last byte is received
+    ///     for each channel.
+    ///   - If the LDAC pin transitions from high to low at any time, all channels will be updated.
+    ///   - If a General Call Software Update command is received, all channels will be updated.
+    ///
+    /// # Errors
+    ///
+    /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if the
+    /// value is out of range (greater than 4095).
     pub fn fast_write(
         &mut self,
         val_a: u16,
@@ -472,9 +484,22 @@ where
     /// Updates the values of all four channels and sets their corresponding [`PowerDownMode`]s.
     ///
     /// This command writes to the output registers directly and does not affect the EEPROM.  The
-    /// voltage reference mode and gain mode are not affected. The actual voltage output will be
-    /// updated as bytes are recieved if the LDAC pin is set low, or can be updated together by
-    /// toggling LDAC from high to low after sending this command.  
+    /// voltage reference mode and gain mode are not affected.
+    ///
+    /// # Updating the analog outputs
+    ///
+    /// This command writes to the input register but does not necessarily update the analog output.
+    /// There are several ways to do so:
+    ///
+    ///   - If the LDAC pin is set low, the output will be updated after the last byte is received
+    ///     for each channel.
+    ///   - If the LDAC pin transitions from high to low at any time, all channels will be updated.
+    ///   - If a General Call Software Update command is received, all channels will be updated.
+    ///
+    /// # Errors
+    ///
+    /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if the
+    /// value is out of range (greater than 4095).
     pub fn fast_write_with_power_down_mode(
         &mut self,
         val_a: (PowerDownMode, u16),
@@ -493,6 +518,25 @@ where
         self.i2c.write_bytes(self.address, &bytes)
     }
 
+    /// Updates all bits of a single channel to both the DAC input register and EEPROM.
+    ///
+    /// This sets the voltage reference mode, power down mode, gain mode, and value of the channel.
+    ///
+    /// # Updating the analog outputs
+    ///
+    /// This command writes to the input register but does not necessarily update the analog output.
+    /// There are several ways to do so:
+    ///
+    ///   - If `OutputEnableMode` is `Update`, the output will be updated after the last byte is
+    ///     received.
+    ///   - If the LDAC pin is set low, the output will be updated after the last byte is received.
+    ///   - If the LDAC pin transitions from high to low at any time, all channels will be updated.
+    ///   - If a General Call Software Update command is received, all channels will be updated.
+    ///
+    /// # Errors
+    ///
+    /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if the
+    /// value is out of range (greater than 4095).
     pub fn single_write(
         &mut self,
         channel: Channel,
@@ -517,6 +561,143 @@ where
             | channel_state.value.to_be_bytes()[0];
         bytes[2] = channel_state.value.to_be_bytes()[1];
         self.i2c.write_bytes(self.address, &bytes)
+    }
+
+    /// Updates all bits of 1-4 sequential channels to both the DAC input registers and EEPROM.
+    ///
+    /// This sets the voltage reference mode, power down mode, gain mode, and value of the channels.
+    /// The channels including and after `starting_channel` will be updated (e.g. if
+    /// `starting_channel` is channel b, then channels b, c and d will be updated). The number of
+    /// entries in `channel_updates` must equal the number of channels that will be updated.
+    ///
+    /// # Updating the analog outputs
+    ///
+    /// This command writes to the input register but does not necessarily update the analog output.
+    /// There are several ways to do so:
+    ///
+    ///   - If `OutputEnableMode` is `Update`, the output will be updated after the last byte is
+    ///     received for each channel.
+    ///   - If the LDAC pin is set low, the output will be updated after the last byte is received
+    ///     for each channel.
+    ///   - If the LDAC pin transitions from high to low at any time, all channels will be updated.
+    ///   - If a General Call Software Update command is received, all channels will be updated.
+    ///
+    /// # Errors
+    ///
+    /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if any
+    /// value is out of range (greater than 4095) and
+    /// [`Error::StartingChannelNotEqualToUpdateLength`] if there is a mismatch between the
+    /// starting channel and the number of updates.
+    pub fn sequential_write(
+        &mut self,
+        starting_channel: Channel,
+        output_enable_mode: OutputEnableMode,
+        channel_updates: &[ChannelState],
+    ) -> Result<(), Error<E>> {
+        let expected_updates = 4 - starting_channel as usize;
+        if channel_updates.len() != expected_updates {
+            return Err(Error::StartingChannelNotEqualToUpdateLength);
+        }
+        let mut is_first_byte = true;
+        let mut channel_index = 0;
+        let mut byte_index = 0;
+        let generator = core::iter::from_fn(move || {
+            if channel_index >= channel_updates.len() {
+                return None;
+            }
+            let channel_state = channel_updates.get(channel_index).unwrap();
+            let byte;
+            if is_first_byte {
+                byte = COMMAND_SEQUENTIAL_WRITE
+                    | (starting_channel as u8) << 1
+                    | output_enable_mode as u8;
+                is_first_byte = false;
+            } else {
+                byte = match byte_index {
+                    0 => {
+                        (channel_state.voltage_reference_mode as u8) << 7
+                            | (channel_state.power_down_mode as u8) << 5
+                            | (channel_state.gain_mode as u8) << 4
+                            | channel_state.value.to_be_bytes()[0]
+                    }
+
+                    1 => channel_state.value.to_be_bytes()[1],
+
+                    _ => panic!("Byte index > 1, this should not happen"),
+                };
+                byte_index = (byte_index + 1) % 2;
+                if byte_index == 0 {
+                    channel_index += 1;
+                }
+            }
+            Some(byte)
+        });
+
+        self.i2c.write_iter(self.address, generator)
+    }
+
+    /// Updates all bits of multiple channels to both the DAC input registers and EEPROM.
+    ///
+    /// This sets the voltage reference mode, power down mode, gain mode, and value of the channels.
+    ///
+    /// # Updating the analog outputs
+    ///
+    /// This command writes to the input register but does not necessarily update the analog output.
+    /// There are several ways to do so:
+    ///
+    ///   - If `OutputEnableMode` is `Update`, the output will be updated after the last byte is
+    ///     received for each channel.
+    ///   - If the LDAC pin is set low, the output will be updated after the last byte is received
+    ///     for each channel.
+    ///   - If the LDAC pin transitions from high to low at any time, all channels will be updated.
+    ///   - If a General Call Software Update command is received, all channels will be updated.
+    ///
+    /// # Errors
+    ///
+    /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if any
+    /// value is out of range (greater than 4095).
+    ///
+    /// This function can write an arbitrary number of updates, so it is impossible to statically
+    /// allocate a buffer to write using the [`embedded_hal::blocking::i2c::Write`] trait.  There is
+    /// the [`embedded_hal::blocking::i2c::WriteIter`] trait, but it is much less commonly
+    /// implemented.  For convenience, if instantiated with the `Write` trait this crate will use
+    /// a buffer large enough to contain four writes at a time and return [`Error::BufferOverflow`]
+    /// if more writes are requested.  This is unlikely to be a limitation given that there are four
+    /// channels.
+    pub fn multi_write(
+        &mut self,
+        channel_updates: &[(Channel, OutputEnableMode, ChannelState)],
+    ) -> Result<(), Error<E>> {
+        let mut channel_index = 0;
+        let mut byte_index = 0;
+        let generator = core::iter::from_fn(move || {
+            if channel_index >= channel_updates.len() {
+                return None;
+            }
+            let (channel, output_enable_mode, channel_state) =
+                channel_updates.get(channel_index).unwrap();
+            let byte = match byte_index {
+                0 => COMMAND_MULTI_WRITE | (*channel as u8) << 1 | *output_enable_mode as u8,
+
+                1 => {
+                    (channel_state.voltage_reference_mode as u8) << 7
+                        | (channel_state.power_down_mode as u8) << 5
+                        | (channel_state.gain_mode as u8) << 4
+                        | channel_state.value.to_be_bytes()[0]
+                }
+
+                2 => channel_state.value.to_be_bytes()[1],
+
+                _ => panic!("Byte index > 2, this should not happen"),
+            };
+            byte_index = (byte_index + 1) % 3;
+            if byte_index == 0 {
+                channel_index += 1;
+            }
+            Some(byte)
+        });
+
+        self.i2c.write_iter(self.address, generator)
     }
 
     pub fn write_voltage_reference_mode(
@@ -591,90 +772,6 @@ where
             channel_d_input: Self::parse_bytes(&bytes[18..21]),
             channel_d_eeprom: Self::parse_bytes(&bytes[21..24]),
         })
-    }
-
-    pub fn multi_write(
-        &mut self,
-        channel_updates: &[(Channel, OutputEnableMode, ChannelState)],
-    ) -> Result<(), Error<E>> {
-        let mut channel_index = 0;
-        let mut byte_index = 0;
-        let generator = core::iter::from_fn(move || {
-            if channel_index >= channel_updates.len() {
-                return None;
-            }
-            let (channel, output_enable_mode, channel_state) =
-                channel_updates.get(channel_index).unwrap();
-            let byte = match byte_index {
-                0 => COMMAND_MULTI_WRITE | (*channel as u8) << 1 | *output_enable_mode as u8,
-
-                1 => {
-                    (channel_state.voltage_reference_mode as u8) << 7
-                        | (channel_state.power_down_mode as u8) << 5
-                        | (channel_state.gain_mode as u8) << 4
-                        | channel_state.value.to_be_bytes()[0]
-                }
-
-                2 => channel_state.value.to_be_bytes()[1],
-
-                _ => panic!("Byte index > 2, this should not happen"),
-            };
-            byte_index = (byte_index + 1) % 3;
-            if byte_index == 0 {
-                channel_index += 1;
-            }
-            Some(byte)
-        });
-
-        self.i2c.write_iter(self.address, generator)
-    }
-
-    pub fn sequential_write(
-        &mut self,
-        starting_channel: Channel,
-        output_enable_mode: OutputEnableMode,
-        channel_updates: &[ChannelState],
-    ) -> Result<(), Error<E>> {
-        let expected_updates = 4 - starting_channel as usize;
-        if channel_updates.len() != expected_updates {
-            return Err(Error::StartingChannelNotEqualToUpdateLength);
-        }
-        let mut is_first_byte = true;
-        let mut channel_index = 0;
-        let mut byte_index = 0;
-        let generator = core::iter::from_fn(move || {
-            if channel_index >= channel_updates.len() {
-                return None;
-            }
-            let channel_state = channel_updates.get(channel_index).unwrap();
-            let byte;
-            if is_first_byte {
-                byte = COMMAND_SEQUENTIAL_WRITE
-                    | (starting_channel as u8) << 1
-                    | output_enable_mode as u8;
-                is_first_byte = false;
-            } else {
-                byte = match byte_index {
-                    0 => {
-                        (channel_state.voltage_reference_mode as u8) << 7
-                            | (channel_state.power_down_mode as u8) << 5
-                            | (channel_state.gain_mode as u8) << 4
-                            | channel_state.value.to_be_bytes()[0]
-                    }
-
-                    1 => channel_state.value.to_be_bytes()[1],
-
-                    _ => panic!("Byte index > 1, this should not happen"),
-                };
-                byte_index = (byte_index + 1) % 2;
-                if byte_index == 0 {
-                    channel_index += 1;
-                }
-            }
-            Some(byte)
-        });
-
-        self.i2c.write_iter(self.address, generator)
     }
 }
 
