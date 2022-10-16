@@ -273,7 +273,8 @@ pub trait I2CInterface {
     fn release(self) -> Self::I2C;
 }
 
-struct I2CInterfaceDefault<I2C> {
+#[doc(hidden)]
+pub struct I2CInterfaceDefault<I2C> {
     i2c: I2C,
 }
 
@@ -324,7 +325,8 @@ where
     }
 }
 
-struct I2CInterfaceIter<I2C> {
+#[doc(hidden)]
+pub struct I2CInterfaceIter<I2C> {
     i2c: I2C,
 }
 
