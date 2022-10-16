@@ -9,9 +9,9 @@
 //! use linux_embedded_hal::I2cdev;
 //! use mcp4728::{MCP4728};
 //!
-//! let i2c = I2cdev::new("/dev/i2c-1")?;
-//! let mut i2c = MCP4728::new(dev, 0x60);
-//! dac.fast_write(483, 279, 297, 590)?;
+//! let i2c = I2cdev::new("/dev/i2c-1").unwrap();
+//! let mut dac = MCP4728::new(i2c, 0x60);
+//! dac.fast_write(483, 279, 297, 590).unwrap();
 //! # }
 //! ```
 #![cfg_attr(not(test), no_std)]
