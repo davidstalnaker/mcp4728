@@ -369,6 +369,17 @@ where
 }
 
 /// MCP4728 4-channel 12-bit I2C DAC.
+///
+/// Some methods (`multi_write` and `sequential_write`) write a variable number of bytes, which
+/// is not possible to do using the [`embedded_hal::blocking::i2c::Write`] trait without allocation.
+/// There is the [`embedded_hal::blocking::i2c::WriteIter`] trait, which _is_ sufficient, but it is
+/// not commonly implemented.
+///
+/// To work around this, we have constructors for each of those traits.  [`MCP4728::new`] will
+/// create a 12-byte buffer when necessary and return an [`Error::BufferOverflow`] if a write
+/// is larger than that.  In practice, there's not really a reason to write more than 4 values
+/// to this 4 channel DAC, and 12 bytes is sufficient for that.  [`MCP4728::from_i2c_iter`] will
+/// use the write_iter function to write any number of updates.
 pub struct MCP4728<B> {
     i2c: B,
     address: u8,
@@ -380,12 +391,6 @@ where
 {
     /// Creates a new [`MCP4728`] from an I2C device that implements the common
     /// [`embedded_hal::blocking::i2c::Read`] and [`embedded_hal::blocking::i2c::Write`] traits.
-    ///
-    /// Some methods (`multi_write` and `sequential_write`) write a variable number of bytes, which
-    /// is not possible to do in the general case with these trait bounds and without allocation. To
-    /// work around this we use a 12-byte buffer and return an [`Error::BufferOverflow`] if a write
-    /// is larger than that.  In practice, there's not really a reason to write more than 4 values
-    /// to this 4 channel DAC, and 12 bytes is sufficient for that.
     pub fn new(i2c: I2C, address: u8) -> Self {
         MCP4728 {
             i2c: I2CInterfaceDefault::new(i2c),
@@ -420,6 +425,25 @@ where
     /// Destroy this instance and return the inner I2C bus.
     pub fn release(self) -> I2C {
         self.i2c.release()
+    }
+
+    /// Reads all registers of all channels from the device.
+    ///
+    /// Each channel includes both the values in EEPROM and in the input registers to the DAC, which
+    /// might differ if e.g. fast_write has been used.
+    pub fn read(&mut self) -> Result<Registers, Error<E>> {
+        let mut bytes = [0; 24];
+        self.i2c.read(self.address, &mut bytes)?;
+        Ok(Registers {
+            channel_a_input: Self::parse_bytes(&bytes[0..3]),
+            channel_a_eeprom: Self::parse_bytes(&bytes[3..6]),
+            channel_b_input: Self::parse_bytes(&bytes[6..9]),
+            channel_b_eeprom: Self::parse_bytes(&bytes[9..12]),
+            channel_c_input: Self::parse_bytes(&bytes[12..15]),
+            channel_c_eeprom: Self::parse_bytes(&bytes[15..18]),
+            channel_d_input: Self::parse_bytes(&bytes[18..21]),
+            channel_d_eeprom: Self::parse_bytes(&bytes[21..24]),
+        })
     }
 
     /// Issues a general call command (address 0x00) to reset the device.  All MCP4728 devices on
@@ -700,6 +724,10 @@ where
         self.i2c.write_iter(self.address, generator)
     }
 
+    /// Writes only the voltage reference mode bits for all channels.
+    ///
+    /// The EEPROM data is not affected and the output of each channel is updated after the command
+    /// has been received.
     pub fn write_voltage_reference_mode(
         &mut self,
         mode_a: VoltageReferenceMode,
@@ -715,6 +743,10 @@ where
         self.i2c.write_bytes(self.address, &[byte])
     }
 
+    /// Writes only the gain mode bits for all channels.
+    ///
+    /// The EEPROM data is not affected and the output of each channel is updated after the command
+    /// has been received.
     pub fn write_gain_mode(
         &mut self,
         mode_a: GainMode,
@@ -730,6 +762,10 @@ where
         self.i2c.write_bytes(self.address, &[byte])
     }
 
+    /// Writes only the power down mode bits for all channels.
+    ///
+    /// The EEPROM data is not affected and the output of each channel is updated after the command
+    /// has been received.
     pub fn write_power_down_mode(
         &mut self,
         mode_a: PowerDownMode,
@@ -757,21 +793,6 @@ where
             ready_state: ReadyState::try_from((bytes[0] & 0b10000000) >> 7).unwrap(),
             power_state: PowerState::try_from((bytes[0] & 0b01000000) >> 6).unwrap(),
         }
-    }
-
-    pub fn read(&mut self) -> Result<Registers, Error<E>> {
-        let mut bytes = [0; 24];
-        self.i2c.read(self.address, &mut bytes)?;
-        Ok(Registers {
-            channel_a_input: Self::parse_bytes(&bytes[0..3]),
-            channel_a_eeprom: Self::parse_bytes(&bytes[3..6]),
-            channel_b_input: Self::parse_bytes(&bytes[6..9]),
-            channel_b_eeprom: Self::parse_bytes(&bytes[9..12]),
-            channel_c_input: Self::parse_bytes(&bytes[12..15]),
-            channel_c_eeprom: Self::parse_bytes(&bytes[15..18]),
-            channel_d_input: Self::parse_bytes(&bytes[18..21]),
-            channel_d_eeprom: Self::parse_bytes(&bytes[21..24]),
-        })
     }
 }
 
