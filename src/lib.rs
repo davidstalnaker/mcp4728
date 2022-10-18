@@ -448,58 +448,70 @@ where
 
 #[cfg(test)]
 mod tests {
-    mod fake_i2c;
+    use embedded_hal_mock::i2c::{Mock as MockI2C, Transaction};
+    use embedded_hal_mock::MockError;
+    use std::io::ErrorKind;
 
-    use std::rc::Rc;
-
-    use crate::tests::fake_i2c::*;
     use crate::*;
 
     #[test]
     fn fast_write() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(
+            0x60,
+            vec![0x0a, 0xaa, 0x00, 0x00, 0x0a, 0xaa, 0x00, 0x00],
+        )];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000), Ok(()));
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0x0a, 0xaa, 0x00, 0x00, 0x0a, 0xaa, 0x00, 0x00]
-            }]
-        );
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn fast_write_i2c_error() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
-        *i2c.should_fail.borrow_mut() = true;
+        let expectations =
+            [
+                Transaction::write(0x60, vec![0x0a, 0xaa, 0x00, 0x00, 0x0a, 0xaa, 0x00, 0x00])
+                    .with_error(MockError::Io(ErrorKind::Other)),
+            ];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000),
-            Err(Error::I2CError(FakeI2CError::WriteError))
+            Err(Error::I2CError(MockError::Io(ErrorKind::Other)))
         );
-        assert_eq!(*messages.borrow(), vec![]);
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn fast_write_out_of_bounds_error() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.fast_write(0x1000, 0x0000, 0x0000, 0x0000),
             Err(Error::ValueOutOfBounds(0x1000))
         );
-        assert_eq!(*messages.borrow(), vec![]);
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn fast_write_with_power_down_mode() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(
+            0x60,
+            vec![0x0a, 0xaa, 0x10, 0x00, 0x2a, 0xaa, 0x30, 0x00],
+        )];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.fast_write_with_power_down_mode(
                 (PowerDownMode::Normal, 0x0aaa),
@@ -509,21 +521,21 @@ mod tests {
             ),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0x0a, 0xaa, 0x10, 0x00, 0x2a, 0xaa, 0x30, 0x00]
-            }]
-        );
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     // || 0 1 0 1 1 CH CH OE || VR PD PD G D D D D || D D D D D D D D ||
     #[test]
     fn single_write_default_values() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(
+            0x60,
+            vec![0b01011010, 0b00001010, 0b10101010],
+        )];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.single_write(
                 Channel::B,
@@ -532,20 +544,20 @@ mod tests {
             ),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0b01011010, 0b00001010, 0b10101010]
-            }]
-        );
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn single_write_set_all_values() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(
+            0x60,
+            vec![0b01011111, 0b11111111, 0b11111111],
+        )];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.single_write(
                 Channel::D,
@@ -558,20 +570,17 @@ mod tests {
             ),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0b01011111, 0b11111111, 0b11111111]
-            }]
-        );
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn single_write_out_of_bounds_error() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.single_write(
                 Channel::B,
@@ -580,14 +589,20 @@ mod tests {
             ),
             Err(Error::ValueOutOfBounds(0xffff))
         );
-        assert_eq!(*messages.borrow(), vec![]);
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn multi_write_set_all_values() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(
+            0x60,
+            vec![0b01000111, 0b11111111, 0b11111111],
+        )];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.multi_write(&[(
                 Channel::D,
@@ -600,20 +615,23 @@ mod tests {
             )]),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0b01000111, 0b11111111, 0b11111111]
-            }]
-        );
+
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn multi_write_multiple_values() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(
+            0x60,
+            vec![
+                0b01000000, 0b00000000, 0b00000001, 0b01000010, 0b00000000, 0b00000010,
+            ],
+        )];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.multi_write(&[
                 (
@@ -629,20 +647,24 @@ mod tests {
             ]),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0b01000000, 0b00000000, 0b00000001, 0b01000010, 0b00000000, 0b00000010]
-            }]
-        );
+
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn sequential_write_multiple_values() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(
+            0x60,
+            vec![
+                0b01010000, 0b00000000, 0b00000001, 0b00000000, 0b00000010, 0b00000000, 0b00000011,
+                0b00000000, 0b00000100,
+            ],
+        )];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.sequential_write(
                 Channel::A,
@@ -656,23 +678,17 @@ mod tests {
             ),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![
-                    0b01010000, 0b00000000, 0b00000001, 0b00000000, 0b00000010, 0b00000000,
-                    0b00000011, 0b00000000, 0b00000100
-                ]
-            }]
-        );
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn sequential_write_too_many_values() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.sequential_write(
                 Channel::B,
@@ -686,14 +702,18 @@ mod tests {
             ),
             Err(Error::StartingChannelNotEqualToUpdateLength)
         );
-        assert_eq!(*messages.borrow(), vec![]);
+
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn write_voltage_reference_mode() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(0x60, vec![0b10000101])];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.write_voltage_reference_mode(
                 VoltageReferenceMode::External,
@@ -703,20 +723,18 @@ mod tests {
             ),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0b10000101]
-            }]
-        );
+
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn write_gain_mode() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(0x60, vec![0b11000101])];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.write_gain_mode(
                 GainMode::TimesOne,
@@ -726,20 +744,18 @@ mod tests {
             ),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0b11000101]
-            }]
-        );
+
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn write_power_down_mode() {
-        let i2c = FakeI2C::new();
-        let messages = Rc::clone(&i2c.messages);
+        let expectations = [Transaction::write(0x60, vec![0b10100001, 0b10110000])];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.write_power_down_mode(
                 PowerDownMode::Normal,
@@ -749,34 +765,29 @@ mod tests {
             ),
             Ok(())
         );
-        assert_eq!(
-            *messages.borrow(),
-            vec![FakeI2CMessage {
-                address: 0x60,
-                bytes: vec![0b10100001, 0b10110000]
-            }]
-        );
+
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 
     #[test]
     fn read() {
-        let i2c = FakeI2C::new();
         #[rustfmt::skip]
-            let bytes = vec![
-                0b00000000, 0b00000000, 0b00000000,
-                0b11000000, 0b11111111, 0b11111111,
-                0b01000000, 0b01010101, 0b01010101,
-                0b00000000, 0b00000000, 0b00000000,
-                0b00000000, 0b00000000, 0b00000000,
-                0b00000000, 0b00000000, 0b00000000,
-                0b00000000, 0b00000000, 0b00000000,
-                0b00000000, 0b00000000, 0b00000000,
-            ];
-        *i2c.message_to_read.borrow_mut() = FakeI2CMessage {
-            address: 0x60,
-            bytes: bytes,
-        };
+        let bytes = vec![
+            0b00000000, 0b00000000, 0b00000000,
+            0b11000000, 0b11111111, 0b11111111,
+            0b01000000, 0b01010101, 0b01010101,
+            0b00000000, 0b00000000, 0b00000000,
+            0b00000000, 0b00000000, 0b00000000,
+            0b00000000, 0b00000000, 0b00000000,
+            0b00000000, 0b00000000, 0b00000000,
+            0b00000000, 0b00000000, 0b00000000,
+        ];
+        let expectations = [Transaction::read(0x60, bytes)];
+        let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
         assert_eq!(
             mcp4728.read(),
             Ok(Registers {
@@ -828,6 +839,9 @@ mod tests {
                     power_state: PowerState::Off
                 },
             })
-        )
+        );
+        i2c = mcp4728.release();
+
+        i2c.done(); // Verify expectations.
     }
 }
