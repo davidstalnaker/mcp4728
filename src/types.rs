@@ -50,7 +50,7 @@ pub enum OutputEnableMode {
     ///
     /// Note that there are other ways to update the analog outputs:
     ///  - Setting the LDAC pin high
-    ///  - Issuing a [`MCP4728::general_call_software_update`]
+    ///  - Issuing a [`MCP4728::general_call_software_update`](crate::MCP4728::general_call_software_update)
     NoUpdate = 1,
 }
 
