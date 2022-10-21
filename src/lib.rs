@@ -562,7 +562,7 @@ mod tests {
     fn single_write_default_values() {
         let expectations = [Transaction::write(
             0x60,
-            vec![0b01011010, 0b00001010, 0b10101010],
+            vec![0b01011010, 0b10001010, 0b10101010],
         )];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
@@ -668,12 +668,16 @@ mod tests {
                 (
                     Channel::A,
                     OutputEnableMode::Update,
-                    ChannelState::new().value(0x0001)
+                    ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External)
+                        .value(0x0001)
                 ),
                 (
                     Channel::B,
                     OutputEnableMode::Update,
-                    ChannelState::new().value(0x0002)
+                    ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External)
+                        .value(0x0002)
                 )
             ]),
             Ok(())
@@ -689,8 +693,8 @@ mod tests {
         let expectations = [Transaction::write(
             0x60,
             vec![
-                0b01010000, 0b00000000, 0b00000001, 0b00000000, 0b00000010, 0b00000000, 0b00000011,
-                0b00000000, 0b00000100,
+                0b01010000, 0b10000000, 0b00000001, 0b10000000, 0b00000010, 0b10000000, 0b00000011,
+                0b10000000, 0b00000100,
             ],
         )];
         let mut i2c = MockI2C::new(&expectations);
@@ -823,7 +827,8 @@ mod tests {
             mcp4728.read(),
             Ok(Registers {
                 channel_a_input: ChannelRegisters {
-                    channel_state: ChannelState::new(),
+                    channel_state: ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External),
                     ready_state: ReadyState::Ready,
                     power_state: PowerState::Off
                 },
@@ -838,6 +843,7 @@ mod tests {
                 },
                 channel_b_input: ChannelRegisters {
                     channel_state: ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External)
                         .power_down_mode(PowerDownMode::PowerDownOneHundredK)
                         .gain_mode(GainMode::TimesTwo)
                         .value(0x0555),
@@ -845,27 +851,32 @@ mod tests {
                     power_state: PowerState::On
                 },
                 channel_b_eeprom: ChannelRegisters {
-                    channel_state: ChannelState::new(),
+                    channel_state: ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External),
                     ready_state: ReadyState::Ready,
                     power_state: PowerState::Off
                 },
                 channel_c_input: ChannelRegisters {
-                    channel_state: ChannelState::new(),
+                    channel_state: ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External),
                     ready_state: ReadyState::Ready,
                     power_state: PowerState::Off
                 },
                 channel_c_eeprom: ChannelRegisters {
-                    channel_state: ChannelState::new(),
+                    channel_state: ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External),
                     ready_state: ReadyState::Ready,
                     power_state: PowerState::Off
                 },
                 channel_d_input: ChannelRegisters {
-                    channel_state: ChannelState::new(),
+                    channel_state: ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External),
                     ready_state: ReadyState::Ready,
                     power_state: PowerState::Off
                 },
                 channel_d_eeprom: ChannelRegisters {
-                    channel_state: ChannelState::new(),
+                    channel_state: ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::External),
                     ready_state: ReadyState::Ready,
                     power_state: PowerState::Off
                 },

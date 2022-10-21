@@ -175,11 +175,11 @@ pub struct ChannelState {
 }
 
 impl ChannelState {
-    /// Creates a ChannelState with all bits set to 0: external voltage reference, powered on, x1
-    /// gain, and value of 0.
+    /// Creates a ChannelState with a reasonable default state: internal voltage reference, powered
+    /// on, x1 gain, and value of 0.
     pub fn new() -> ChannelState {
         ChannelState {
-            voltage_reference_mode: VoltageReferenceMode::External,
+            voltage_reference_mode: VoltageReferenceMode::Internal,
             power_down_mode: PowerDownMode::Normal,
             gain_mode: GainMode::TimesOne,
             value: 0,
