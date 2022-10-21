@@ -137,6 +137,19 @@ where
     ///   - If the LDAC pin transitions from high to low at any time, all channels will be updated.
     ///   - If a General Call Software Update command is received, all channels will be updated.
     ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # #[cfg(target_os = "linux")] {
+    /// use linux_embedded_hal::I2cdev;
+    /// use mcp4728::{MCP4728};
+    ///
+    /// let i2c = I2cdev::new("/dev/i2c-1").unwrap();
+    /// let mut dac = MCP4728::new(i2c, 0x60);
+    /// dac.fast_write(483, 279, 297, 590).unwrap();
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if the
@@ -170,6 +183,24 @@ where
     ///     for each channel.
     ///   - If the LDAC pin transitions from high to low at any time, all channels will be updated.
     ///   - If a General Call Software Update command is received, all channels will be updated.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # #[cfg(target_os = "linux")] {
+    /// use linux_embedded_hal::I2cdev;
+    /// use mcp4728::{MCP4728, PowerDownMode};
+    ///
+    /// let i2c = I2cdev::new("/dev/i2c-1").unwrap();
+    /// let mut dac = MCP4728::new(i2c, 0x60);
+    /// dac.fast_write_with_power_down_mode(
+    ///     (PowerDownMode::Normal, 100),
+    ///     (PowerDownMode::Normal, 200),
+    ///     (PowerDownMode::PowerDownOneK, 0),
+    ///     (PowerDownMode::PowerDownOneK, 0),
+    /// ).unwrap();
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
