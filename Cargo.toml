@@ -6,7 +6,7 @@ description = "Platform agnostic rust driver for the MCP4728 4-channel, 12-bit I
 readme = "README.md"
 repository = "https://github.com/davidstalnaker/mcp4728"
 license = "MIT OR Apache-2.0"
-keywords = ["dac", "driver", "embedded-hal-driver"]
+keywords = ["dac", "driver", "embedded-hal", "embedded-hal-driver"]
 categories = ["no-std", "embedded", "hardware-support"]
 
 
