@@ -57,8 +57,10 @@
 //! - If a General Call Software Update command is received, all channels will be updated.
 #![cfg_attr(not(test), no_std)]
 
+mod internal_types;
 mod types;
 
+use crate::internal_types::*;
 pub use crate::types::*;
 
 use embedded_hal::blocking::i2c;
@@ -347,7 +349,7 @@ where
         }
         let mut is_first_byte = true;
         let mut channel_index = 0;
-        let mut byte_index = 0;
+        let mut byte_index = SequentialWriteByteIndex::Zero;
         let generator = core::iter::from_fn(move || {
             if channel_index >= channel_updates.len() {
                 return None;
@@ -361,19 +363,17 @@ where
                 is_first_byte = false;
             } else {
                 byte = match byte_index {
-                    0 => {
+                    SequentialWriteByteIndex::Zero => {
                         (channel_state.voltage_reference_mode as u8) << 7
                             | (channel_state.power_down_mode as u8) << 5
                             | (channel_state.gain_mode as u8) << 4
                             | channel_state.value.to_be_bytes()[0]
                     }
 
-                    1 => channel_state.value.to_be_bytes()[1],
-
-                    _ => panic!("Byte index > 1, this should not happen"),
+                    SequentialWriteByteIndex::One => channel_state.value.to_be_bytes()[1],
                 };
-                byte_index = (byte_index + 1) % 2;
-                if byte_index == 0 {
+                byte_index = byte_index.next();
+                if byte_index == SequentialWriteByteIndex::Zero {
                     channel_index += 1;
                 }
             }
@@ -415,7 +415,7 @@ where
         channel_updates: &[(Channel, OutputEnableMode, ChannelState)],
     ) -> Result<(), Error<E>> {
         let mut channel_index = 0;
-        let mut byte_index = 0;
+        let mut byte_index = MultiWriteByteIndex::Zero;
         let generator = core::iter::from_fn(move || {
             if channel_index >= channel_updates.len() {
                 return None;
@@ -423,21 +423,21 @@ where
             let (channel, output_enable_mode, channel_state) =
                 channel_updates.get(channel_index).unwrap();
             let byte = match byte_index {
-                0 => COMMAND_MULTI_WRITE | (*channel as u8) << 1 | *output_enable_mode as u8,
+                MultiWriteByteIndex::Zero => {
+                    COMMAND_MULTI_WRITE | (*channel as u8) << 1 | *output_enable_mode as u8
+                }
 
-                1 => {
+                MultiWriteByteIndex::One => {
                     (channel_state.voltage_reference_mode as u8) << 7
                         | (channel_state.power_down_mode as u8) << 5
                         | (channel_state.gain_mode as u8) << 4
                         | channel_state.value.to_be_bytes()[0]
                 }
 
-                2 => channel_state.value.to_be_bytes()[1],
-
-                _ => panic!("Byte index > 2, this should not happen"),
+                MultiWriteByteIndex::Two => channel_state.value.to_be_bytes()[1],
             };
-            byte_index = (byte_index + 1) % 3;
-            if byte_index == 0 {
+            byte_index = byte_index.next();
+            if byte_index == MultiWriteByteIndex::Zero {
                 channel_index += 1;
             }
             Some(byte)
