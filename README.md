@@ -1,5 +1,9 @@
 # Rust driver for MCP4728 4-channel 12-bit I2C DAC
 
+[![Test][test-badge]][test-link]
+[![Crates.io][crates-badge]][crates-link]
+[![Docs.rs][docs-badge]][docs-link]
+
 This is a platform agnostic rust driver for the MCP4728 DAC using the
 [embedded-hal](https://github.com/rust-embedded/embedded-hal) traits.
 
@@ -69,3 +73,12 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
+
+<!-- Badges -->
+
+[test-badge]: https://github.com/davidstalnaker/mcp4728/actions/workflows/test.yaml/badge.svg
+[test-link]: https://github.com/davidstalnaker/mcp4728/actions/workflows/test.yaml
+[crates-badge]: https://img.shields.io/crates/v/mcp4728
+[crates-link]: https://crates.io/crates/mcp4728
+[docs-badge]: https://img.shields.io/docsrs/mcp4728
+[docs-link]: https://docs.rs/mcp4728/latest/mcp4728
