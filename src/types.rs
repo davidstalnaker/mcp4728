@@ -10,14 +10,20 @@ pub enum Error<InnerError> {
     ///
     /// The MCP4728 is a 12-bit DAC, so values that it writes must be smaller than 2^12.
     ValueOutOfBounds(u16),
-    /// An internal buffer overflowed.
-    BufferOverflow,
+    /// [`MCP4728::multi_write`](crate::MCP4728::multi_write) can write an arbitrary number of
+    /// updates, so it is impossible to statically allocate a buffer to write using the
+    /// [`embedded_hal::blocking::i2c::Write`] trait.  There is the
+    /// [`embedded_hal::blocking::i2c::WriteIter`] trait, but it is much less commonly implemented.
+    /// To work around this, we will use a buffer large enough to contain four writes at a time and
+    /// return [`Error::WriteSizeExceeded`] if more writes are requested.  This is unlikely to be a
+    /// limitation given that there are four channels.
+    WriteSizeExceeded,
     /// A sequential write command was issued with a list of updates that didn't match the
     /// associated starting channel.
     ///
     /// For example, a sequential write command that starts with channel B must contain 3 updates:
     /// for channels B, C, and D.
-    StartingChannelNotEqualToUpdateLength,
+    StartingChannelMismatch,
     /// Error representing an error that came from the inner I2C driver.
     I2CError(InnerError),
 }

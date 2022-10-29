@@ -108,7 +108,7 @@ where
         let mut i = 0;
         for b in bytes {
             if i >= 12 {
-                return Err(Error::BufferOverflow);
+                return Err(Error::WriteSizeExceeded);
             }
             buffer[i] = b;
             i += 1;
@@ -335,8 +335,8 @@ where
     ///
     /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if any
     /// value is out of range (greater than 4095) and
-    /// [`Error::StartingChannelNotEqualToUpdateLength`] if there is a mismatch between the
-    /// starting channel and the number of updates.
+    /// [`Error::StartingChannelMismatch`] if there is a mismatch between the starting channel and
+    /// the number of updates.
     pub fn sequential_write(
         &mut self,
         starting_channel: Channel,
@@ -345,7 +345,7 @@ where
     ) -> Result<(), Error<E>> {
         let expected_updates = 4 - starting_channel as usize;
         if channel_updates.len() != expected_updates {
-            return Err(Error::StartingChannelNotEqualToUpdateLength);
+            return Err(Error::StartingChannelMismatch);
         }
         let mut is_first_byte = true;
         let mut channel_index = 0;
@@ -408,7 +408,7 @@ where
     /// allocate a buffer to write using the [`embedded_hal::blocking::i2c::Write`] trait.  There is
     /// the [`embedded_hal::blocking::i2c::WriteIter`] trait, but it is much less commonly
     /// implemented.  To work around this, we will use a buffer large enough to contain four writes
-    /// at a time and return [`Error::BufferOverflow`] if more writes are requested.  This is
+    /// at a time and return [`Error::WriteSizeExceeded`] if more writes are requested.  This is
     /// unlikely to be a limitation given that there are four channels.
     pub fn multi_write(
         &mut self,
@@ -776,7 +776,7 @@ mod tests {
                     ChannelState::new().value(0x0004),
                 ]
             ),
-            Err(Error::StartingChannelNotEqualToUpdateLength)
+            Err(Error::StartingChannelMismatch)
         );
 
         i2c = mcp4728.release();
