@@ -23,6 +23,8 @@ the device. Three bits of the driver can be set (from 0x60 to 0x67) but this is 
 another pin in precise timing with the I2C message, which is not possible to do using the
 [embedded-hal](https://github.com/rust-embedded/embedded-hal) traits.
 
+This crate is `#![no_std]` and does not contain unsafe code.
+
 ## Device
 
 The MCP4728 is a 4-channel, 12-bit digital-to-analog converter with nonvolatile memory (EEPROM) for
