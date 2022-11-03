@@ -1,9 +1,4 @@
-/target
-
-
-# Added by cargo
-#
-# already existing elements were commented out
-
-#/target
-/Cargo.lock
+Cargo.lock
+target
+example/Cargo.lock
+example/target

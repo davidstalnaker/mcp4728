@@ -8,7 +8,7 @@ repository = "https://github.com/davidstalnaker/mcp4728"
 license = "MIT OR Apache-2.0"
 keywords = ["dac", "driver", "embedded-hal", "embedded-hal-driver"]
 categories = ["no-std", "embedded", "hardware-support"]
-
+autoexamples = false
 
 [dependencies]
 embedded-hal = "0.2.7"

@@ -1,0 +1,18 @@
+[package]
+name = "mcp4728-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+cortex-m = "0.7.6"
+cortex-m-rt = "0.7"
+embedded-hal = "0.2.7"
+fugit = "0.3.6"
+mcp4728 = { path = ".." }
+panic-halt = "0.2.0"
+rp-pico = "0.5.0"
+rp2040-hal = "0.6.0"
+
+[[bin]]
+name = "pi_pico"
