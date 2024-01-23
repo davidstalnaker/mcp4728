@@ -12,10 +12,10 @@ autoexamples = false
 
 [dependencies]
 embedded-hal = "0.2.7"
-num_enum = { version = "0.5.7", default-features = false }
+num_enum = { version = "0.7.2", default-features = false }
 
 [dev-dependencies]
-embedded-hal-mock = "0.8.0"
+embedded-hal-mock = "0.10.0"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 linux-embedded-hal = "0.3.2"

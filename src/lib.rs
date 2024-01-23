@@ -522,8 +522,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use embedded_hal_mock::i2c::{Mock as MockI2C, Transaction};
-    use embedded_hal_mock::MockError;
+    use embedded_hal_mock::eh0::i2c::{Mock as MockI2C, Transaction};
+    use embedded_hal_mock::eh0::MockError;
     use std::io::ErrorKind;
 
     use crate::*;
