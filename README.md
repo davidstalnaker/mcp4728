@@ -59,6 +59,11 @@ There are several ways to do so:
 - If the LDAC pin transitions from high to low at any time, all channels will be updated.
 - If a General Call Software Update command is received, all channels will be updated.
 
+## Minimum Supported Rust Version (MSRV)
+
+This crate is guaranteed to compile on stable Rust 1.65 and up. It _might_ compile with older
+versions but that may change in any new patch release.
+
 ## License
 
 Licensed under either of

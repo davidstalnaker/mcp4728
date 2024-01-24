@@ -12,11 +12,9 @@ pub enum Error<InnerError> {
     ValueOutOfBounds(u16),
     /// [`MCP4728::multi_write`](crate::MCP4728::multi_write) can write an arbitrary number of
     /// updates, so it is impossible to statically allocate a buffer to write using the
-    /// [`embedded_hal::blocking::i2c::Write`] trait.  There is the
-    /// [`embedded_hal::blocking::i2c::WriteIter`] trait, but it is much less commonly implemented.
-    /// To work around this, we will use a buffer large enough to contain four writes at a time and
-    /// return [`Error::WriteSizeExceeded`] if more writes are requested.  This is unlikely to be a
-    /// limitation given that there are four channels.
+    /// [`embedded_hal::i2c::I2c`] trait.  To work around this, we will use a buffer large enough to
+    /// contain four writes at a time and return [`Error::WriteSizeExceeded`] if more writes are
+    /// requested.  This is unlikely to be a limitation given that there are four channels.
     WriteSizeExceeded,
     /// A sequential write command was issued with a list of updates that didn't match the
     /// associated starting channel.

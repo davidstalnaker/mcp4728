@@ -65,7 +65,7 @@ mod types;
 use crate::internal_types::*;
 pub use crate::types::*;
 
-use embedded_hal::blocking::i2c;
+use embedded_hal::i2c;
 
 const ADDRESS_GENERAL_CALL: u8 = 0x00;
 const COMMAND_GENERAL_CALL_RESET: u8 = 0b00000110;
@@ -79,8 +79,8 @@ const COMMAND_WRITE_GAIN_MODE: u8 = 0b11000000;
 const COMMAND_WRITE_POWER_DOWN_MODE: u8 = 0b10100000;
 
 /// MCP4728 4-channel 12-bit I2C DAC.
-pub struct MCP4728<I2C> {
-    i2c: I2C,
+pub struct MCP4728<I> {
+    i2c: I,
     address: u8,
 }
 /// Implementation of all commands given a generic I2CInterface.
@@ -88,13 +88,13 @@ pub struct MCP4728<I2C> {
 /// # Errors
 ///
 /// Any errors encountered within the I2C device will be wrapped in [`Error::I2CError`].
-impl<I2C, E> MCP4728<I2C>
+impl<I, E> MCP4728<I>
 where
-    I2C: i2c::Read<Error = E> + i2c::Write<Error = E>,
+    I: i2c::I2c<Error = E>,
 {
-    /// Creates a new [`MCP4728`] from an I2C device that implements the
-    /// [`embedded_hal::blocking::i2c::Read`] and [`embedded_hal::blocking::i2c::Write`] traits.
-    pub fn new(i2c: I2C, address: u8) -> Self {
+    /// Creates a new [`MCP4728`] from an I2C device that implements the [`embedded_hal::i2c::I2c`]
+    /// trait.
+    pub fn new(i2c: I, address: u8) -> Self {
         MCP4728 { i2c, address }
     }
 
@@ -121,7 +121,7 @@ where
     }
 
     /// Destroy this instance and return the inner I2C bus.
-    pub fn release(self) -> I2C {
+    pub fn release(self) -> I {
         self.i2c
     }
 
@@ -407,11 +407,10 @@ where
     /// value is out of range (greater than 4095).
     ///
     /// This function can write an arbitrary number of updates, so it is impossible to statically
-    /// allocate a buffer to write using the [`embedded_hal::blocking::i2c::Write`] trait.  There is
-    /// the [`embedded_hal::blocking::i2c::WriteIter`] trait, but it is much less commonly
-    /// implemented.  To work around this, we will use a buffer large enough to contain four writes
-    /// at a time and return [`Error::WriteSizeExceeded`] if more writes are requested.  This is
-    /// unlikely to be a limitation given that there are four channels.
+    /// allocate a buffer to write using the [`embedded_hal::i2c::I2c`] trait.  To work around this,
+    /// we will use a buffer large enough to contain four writes at a time and return
+    /// [`Error::WriteSizeExceeded`] if more writes are requested.  This is unlikely to be a
+    /// limitation given that there are four channels.
     pub fn multi_write(
         &mut self,
         channel_updates: &[(Channel, OutputEnableMode, ChannelState)],
@@ -522,9 +521,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use embedded_hal_mock::eh0::i2c::{Mock as MockI2C, Transaction};
-    use embedded_hal_mock::eh0::MockError;
-    use std::io::ErrorKind;
+    use embedded_hal::i2c::ErrorKind;
+    use embedded_hal_mock::eh1::i2c::{Mock as MockI2C, Transaction};
 
     use crate::*;
 
@@ -548,14 +546,14 @@ mod tests {
         let expectations =
             [
                 Transaction::write(0x60, vec![0x0a, 0xaa, 0x00, 0x00, 0x0a, 0xaa, 0x00, 0x00])
-                    .with_error(MockError::Io(ErrorKind::Other)),
+                    .with_error(ErrorKind::Other),
             ];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
             mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000),
-            Err(Error::I2CError(MockError::Io(ErrorKind::Other)))
+            Err(Error::I2CError(ErrorKind::Other))
         );
         i2c = mcp4728.release();
 
