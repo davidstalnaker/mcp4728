@@ -10,7 +10,11 @@ keywords = ["dac", "driver", "embedded-hal", "embedded-hal-driver"]
 categories = ["no-std", "embedded", "hardware-support"]
 autoexamples = false
 
+[features]
+defmt-03 = ["dep:defmt"]
+
 [dependencies]
+defmt = { version = "0.3", optional = true }
 embedded-hal = "1.0.0"
 num_enum = { version = "0.7.2", default-features = false }
 

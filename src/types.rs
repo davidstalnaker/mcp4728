@@ -5,6 +5,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 /// Error type for the crate, which can represent either an error from this driver or an inner error
 /// that comes from the I2C type.
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 pub enum Error<InnerError> {
     /// A value was larger than the DAC supports.
     ///
@@ -36,6 +37,7 @@ impl<InnerError> From<InnerError> for Error<InnerError> {
 
 /// Output channel selection.
 #[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 #[repr(u8)]
 pub enum Channel {
     A = 0,
@@ -46,6 +48,7 @@ pub enum Channel {
 
 /// Configuration bit for whether to update the analog output.
 #[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 #[repr(u8)]
 pub enum OutputEnableMode {
     /// The analog output will be updated immediately after the command is received.
@@ -60,6 +63,7 @@ pub enum OutputEnableMode {
 
 /// Configuration bit for which voltage reference a channel should use.
 #[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 #[repr(u8)]
 pub enum VoltageReferenceMode {
     /// Use the external pin VDD as a voltage reference.
@@ -70,6 +74,7 @@ pub enum VoltageReferenceMode {
 
 /// Configuration bits for the powered-down state of a channel.
 #[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PowerDownMode {
     /// Channel is not powered down.
@@ -87,6 +92,7 @@ pub enum PowerDownMode {
 /// If the channel is using an external reference, this bit is ignored and a gain of 1x is always
 /// used.
 #[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 #[repr(u8)]
 pub enum GainMode {
     /// Gain is set to unity (1x).
@@ -99,6 +105,7 @@ pub enum GainMode {
 
 /// Status of the EEPROM.
 #[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 #[repr(u8)]
 pub enum ReadyState {
     /// The EEPROM is not busy.
@@ -111,6 +118,7 @@ pub enum ReadyState {
 
 /// The power-on state of the entire device.
 #[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PowerState {
     /// The device is powered off.
@@ -125,6 +133,7 @@ pub enum PowerState {
 ///
 /// Used only for reads.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 pub struct ChannelRegisters {
     /// All mode configuration bits and value of the channel.
     pub channel_state: ChannelState,
@@ -144,6 +153,7 @@ pub struct ChannelRegisters {
 ///
 /// Used only for reads.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 pub struct Registers {
     /// Contents of the DAC input register for channel A.
     pub channel_a_input: ChannelRegisters,
@@ -165,6 +175,7 @@ pub struct Registers {
 
 /// Representation of the register of an indivdual channel.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
 pub struct ChannelState {
     /// The voltage reference mode.
     pub voltage_reference_mode: VoltageReferenceMode,

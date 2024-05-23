@@ -36,6 +36,10 @@ Channels can be written individually or together.
 
 [MCP4728](https://ww1.microchip.com/downloads/en/DeviceDoc/22187E.pdf)
 
+## Features
+
+* `defmt-03`: Adds support for `defmt` version 0.3's [`Format` trait](https://docs.rs/defmt/0.3.8/defmt/trait.Format.html)
+
 ## Usage
 
 ```rust
