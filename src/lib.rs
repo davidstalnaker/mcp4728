@@ -62,6 +62,9 @@
 mod internal_types;
 mod types;
 
+#[cfg(feature = "async")]
+mod async_impl;
+
 use crate::internal_types::*;
 pub use crate::types::*;
 
@@ -85,6 +88,7 @@ pub struct MCP4728<I> {
     i2c: I,
     address: u8,
 }
+
 /// Implementation of all commands given a generic I2CInterface.
 ///
 /// # Errors
@@ -96,7 +100,7 @@ where
 {
     /// Creates a new [`MCP4728`] from an I2C device that implements the [`embedded_hal::i2c::I2c`]
     /// trait.
-    pub fn new(i2c: I, address: u8) -> Self {
+    pub const fn new(i2c: I, address: u8) -> Self {
         MCP4728 { i2c, address }
     }
 
@@ -503,8 +507,10 @@ where
         bytes[1] = (mode_c as u8) << 6 | (mode_d as u8) << 4;
         self.write_bytes(self.address, &bytes)
     }
+}
 
-    fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
+impl<I> MCP4728<I> {
+    pub(crate) fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
         ChannelRegisters {
             channel_state: ChannelState {
                 voltage_reference_mode: VoltageReferenceMode::try_from(

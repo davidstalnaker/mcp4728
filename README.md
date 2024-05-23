@@ -5,7 +5,8 @@
 [![Docs.rs][docs-badge]][docs-link]
 
 This is a platform agnostic rust driver for the MCP4728 DAC using the
-[embedded-hal](https://github.com/rust-embedded/embedded-hal) traits.
+[embedded-hal](https://github.com/rust-embedded/embedded-hal) and optionally
+the [embedded-hal-async](https://docs.rs/embedded-hal-async/latest/embedded_hal_async/) traits.
 
 This driver allows you to:
 
@@ -36,9 +37,10 @@ Channels can be written individually or together.
 
 [MCP4728](https://ww1.microchip.com/downloads/en/DeviceDoc/22187E.pdf)
 
-## Features
+## Optional Cargo features
 
-* `defmt-03`: Adds support for `defmt` version 0.3's [`Format` trait](https://docs.rs/defmt/0.3.8/defmt/trait.Format.html)
+* `defmt-03`: Derive [`defmt::Format`](https://docs.rs/defmt/0.3.8/defmt/trait.Format.html) from `defmt` 0.3 for some enums and structs
+* `async`: Use the [`embedded-hal-async`](https://docs.rs/embedded-hal-async/latest/embedded_hal_async/) traits for the `MCP4728` struct
 
 ## Usage
 
@@ -67,6 +69,8 @@ There are several ways to do so:
 
 This crate is guaranteed to compile on stable Rust 1.65 and up. It _might_ compile with older
 versions but that may change in any new patch release.
+
+With the `async` feature on, `embedded-hal-async` has an MSRV of 1.75.
 
 ## License
 
