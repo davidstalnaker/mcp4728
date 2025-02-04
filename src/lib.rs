@@ -80,7 +80,7 @@ const COMMAND_WRITE_POWER_DOWN_MODE: u8 = 0b10100000;
 
 /// MCP4728 4-channel 12-bit I2C DAC.
 #[derive(Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt-03", derive(defmt::Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MCP4728<I> {
     i2c: I,
     address: u8,
