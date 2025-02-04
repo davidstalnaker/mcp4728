@@ -83,7 +83,7 @@ dac.fast_write(483, 279, 297, 590).await.unwrap();
 
 ## Minimum Supported Rust Version (MSRV)
 
-This crate is guaranteed to compile on stable Rust 1.65 and up. It _might_ compile with older
+This crate is guaranteed to compile on stable Rust 1.75 and up. It _might_ compile with older
 versions but that may change in any new patch release.
 
 ## License
