@@ -38,7 +38,13 @@ Channels can be written individually or together.
 
 ## Features
 
-- `defmt`: Adds support for `defmt` version 0.3's [`Format` trait](https://docs.rs/defmt/0.3.8/defmt/trait.Format.html)
+- `sync`: Adds support for the `embedded-hal`
+  [`I2c` trait](https://docs.rs/embedded-hal/latest/embedded_hal/i2c/index.html)
+  (enabled by default)
+- `async`: Adds support for the `embedded-hal-async`
+  [`I2c` trait](https://docs.rs/embedded-hal-async/1.0.0/embedded_hal_async/i2c/trait.I2c.html)
+- `defmt`: Adds implementation of the `defmt`
+  [`Format` trait](https://docs.rs/defmt/latest/defmt/trait.Format.html) to all types
 
 ## Usage
 
@@ -62,6 +68,18 @@ There are several ways to do so:
   channel.
 - If the LDAC pin transitions from high to low at any time, all channels will be updated.
 - If a General Call Software Update command is received, all channels will be updated.
+
+### Async
+
+This crate optionally supports async, behind the `async` feature. The API is otherwise identical.
+
+```rust
+use mcp4728::{MCP4728Async};
+
+// Assume i2c implements embedded_hal_async::i2c::I2c.
+let mut dac = MCP4728Async::new(i2c, 0x60);
+dac.fast_write(483, 279, 297, 590).await.unwrap();
+```
 
 ## Minimum Supported Rust Version (MSRV)
 
