@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::OutputPin;
 use fugit::RateExtU32;
 use hal::pac;
 use mcp4728::MCP4728;
@@ -39,8 +39,15 @@ fn main() -> ! {
     );
 
     let mut led_pin = pins.led.into_push_pull_output();
-    let sda_pin = pins.gpio4.into_mode::<hal::gpio::FunctionI2C>();
-    let scl_pin = pins.gpio5.into_mode::<hal::gpio::FunctionI2C>();
+
+    let sda_pin = pins
+        .gpio4
+        .into_function::<hal::gpio::FunctionI2C>()
+        .into_pull_type::<hal::gpio::PullUp>();
+    let scl_pin = pins
+        .gpio5
+        .into_function::<hal::gpio::FunctionI2C>()
+        .into_pull_type::<hal::gpio::PullUp>();
 
     let i2c = hal::I2C::i2c0(
         pac.I2C0,
@@ -55,13 +62,12 @@ fn main() -> ! {
     let mut dac = MCP4728::new(i2c, 0x64);
 
     loop {
-        dac.fast_write(0, 0, 0, 0).unwrap();
-        led_pin.set_low().unwrap();
-        delay.delay_ms(2000);
-
-        dac.fast_write(0xfff, 0xfff, 0xfff, 0xfff).unwrap();
-
         led_pin.set_high().unwrap();
-        delay.delay_ms(2000);
+        dac.fast_write(0xfff, 0xfff, 0xfff, 0xfff).unwrap();
+        delay.delay_ms(1000);
+
+        led_pin.set_low().unwrap();
+        dac.fast_write(0, 0, 0, 0).unwrap();
+        delay.delay_ms(1000);
     }
 }
