@@ -65,8 +65,6 @@ mod types;
 use crate::internal_types::*;
 pub use crate::types::*;
 
-use embedded_hal::i2c;
-
 const ADDRESS_GENERAL_CALL: u8 = 0x00;
 const COMMAND_GENERAL_CALL_RESET: u8 = 0b00000110;
 const COMMAND_GENERAL_CALL_WAKE_UP: u8 = 0b00001001;
@@ -81,6 +79,11 @@ const COMMAND_WRITE_POWER_DOWN_MODE: u8 = 0b10100000;
 /// MCP4728 4-channel 12-bit I2C DAC.
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[maybe_async_cfg::maybe(
+    idents(MCP4728(sync, async = "MCP4728Async"),),
+    sync(feature = "sync"),
+    async(feature = "async")
+)]
 pub struct MCP4728<I> {
     i2c: I,
     address: u8,
@@ -90,9 +93,17 @@ pub struct MCP4728<I> {
 /// # Errors
 ///
 /// Any errors encountered within the I2C device will be wrapped in [`Error::I2CError`].
+#[maybe_async_cfg::maybe(
+    idents(
+        MCP4728(sync, async = "MCP4728Async"),
+        embedded_hal(sync, async = "embedded_hal_async"),
+    ),
+    sync(feature = "sync"),
+    async(feature = "async")
+)]
 impl<I, E> MCP4728<I>
 where
-    I: i2c::I2c<Error = E>,
+    I: embedded_hal::i2c::I2c<Error = E>,
 {
     /// Creates a new [`MCP4728`] from an I2C device that implements the [`embedded_hal::i2c::I2c`]
     /// trait.
@@ -100,11 +111,13 @@ where
         MCP4728 { i2c, address }
     }
 
-    fn write_bytes(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error<E>> {
-        self.i2c.write(address, bytes).map_err(Error::I2CError)
+    async fn write_bytes(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error<E>> {
+        self.i2c
+            .write(address, bytes)
+            .await
+            .map_err(Error::I2CError)
     }
-
-    fn write_iter<B>(&mut self, address: u8, bytes: B) -> Result<(), Error<E>>
+    async fn write_iter<B>(&mut self, address: u8, bytes: B) -> Result<(), Error<E>>
     where
         B: IntoIterator<Item = u8>,
     {
@@ -119,6 +132,7 @@ where
         }
         self.i2c
             .write(address, &buffer[0..i])
+            .await
             .map_err(Error::I2CError)
     }
 
@@ -126,14 +140,13 @@ where
     pub fn release(self) -> I {
         self.i2c
     }
-
     /// Reads all registers of all channels from the device.
     ///
     /// Each channel includes both the values in EEPROM and in the input registers to the DAC, which
     /// might differ if e.g. fast_write has been used.
-    pub fn read(&mut self) -> Result<Registers, Error<E>> {
+    pub async fn read(&mut self) -> Result<Registers, Error<E>> {
         let mut bytes = [0; 24];
-        self.i2c.read(self.address, &mut bytes)?;
+        self.i2c.read(self.address, &mut bytes).await?;
         Ok(Registers {
             channel_a_input: Self::parse_bytes(&bytes[0..3]),
             channel_a_eeprom: Self::parse_bytes(&bytes[3..6]),
@@ -149,23 +162,26 @@ where
     /// Issues a general call command (address 0x00) to reset the device.  All MCP4728 devices on
     /// the bus will load the values from EEPROM into the output registers and update the output
     /// voltage.
-    pub fn general_call_reset(&mut self) -> Result<(), Error<E>> {
+    pub async fn general_call_reset(&mut self) -> Result<(), Error<E>> {
         self.write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_RESET])
+            .await
     }
 
     /// Issues a general call command (address 0x00) to wake up the device.  All MCP4728 devices on
     /// the bus will reset the power down bits and turn on all channels.
-    pub fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
+    pub async fn general_call_wake_up(&mut self) -> Result<(), Error<E>> {
         self.write_bytes(ADDRESS_GENERAL_CALL, &[COMMAND_GENERAL_CALL_WAKE_UP])
+            .await
     }
 
     /// Issues a general call command (address 0x00) to update software.  All MCP4728 devices on the
     /// bus will immediately update the output voltage.
-    pub fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
+    pub async fn general_call_software_update(&mut self) -> Result<(), Error<E>> {
         self.write_bytes(
             ADDRESS_GENERAL_CALL,
             &[COMMAND_GENERAL_CALL_SOFTWARE_UPDATE],
         )
+        .await
     }
 
     /// Updates the values of all four channels and sets them to be powered on (i.e.
@@ -201,7 +217,7 @@ where
     ///
     /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if the
     /// value is out of range (greater than 4095).
-    pub fn fast_write(
+    pub async fn fast_write(
         &mut self,
         val_a: u16,
         val_b: u16,
@@ -214,6 +230,7 @@ where
             (PowerDownMode::Normal, val_c),
             (PowerDownMode::Normal, val_d),
         )
+        .await
     }
 
     /// Updates the values of all four channels and sets their corresponding [`PowerDownMode`]s.
@@ -253,7 +270,7 @@ where
     ///
     /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if the
     /// value is out of range (greater than 4095).
-    pub fn fast_write_with_power_down_mode(
+    pub async fn fast_write_with_power_down_mode(
         &mut self,
         val_a: (PowerDownMode, u16),
         val_b: (PowerDownMode, u16),
@@ -268,9 +285,8 @@ where
             bytes[2 * i] = (mode as u8) << 4 | val.to_be_bytes()[0];
             bytes[2 * i + 1] = val.to_be_bytes()[1];
         }
-        self.write_bytes(self.address, &bytes)
+        self.write_bytes(self.address, &bytes).await
     }
-
     /// Updates all bits of a single channel to both the DAC input register and EEPROM.
     ///
     /// This sets the voltage reference mode, power down mode, gain mode, and value of the channel.
@@ -290,7 +306,7 @@ where
     ///
     /// In addition to the internal I2C errors, this can return [`Error::ValueOutOfBounds`] if the
     /// value is out of range (greater than 4095).
-    pub fn single_write(
+    pub async fn single_write(
         &mut self,
         channel: Channel,
         output_enable_mode: OutputEnableMode,
@@ -313,7 +329,7 @@ where
             | (channel_state.gain_mode as u8) << 4
             | channel_state.value.to_be_bytes()[0];
         bytes[2] = channel_state.value.to_be_bytes()[1];
-        self.write_bytes(self.address, &bytes)
+        self.write_bytes(self.address, &bytes).await
     }
 
     /// Updates all bits of 1-4 sequential channels to both the DAC input registers and EEPROM.
@@ -341,7 +357,7 @@ where
     /// value is out of range (greater than 4095) and
     /// [`Error::StartingChannelMismatch`] if there is a mismatch between the starting channel and
     /// the number of updates.
-    pub fn sequential_write(
+    pub async fn sequential_write(
         &mut self,
         starting_channel: Channel,
         output_enable_mode: OutputEnableMode,
@@ -384,7 +400,7 @@ where
             Some(byte)
         });
 
-        self.write_iter(self.address, generator)
+        self.write_iter(self.address, generator).await
     }
 
     /// Updates all bits of multiple channels to both the DAC input registers and EEPROM.
@@ -413,7 +429,7 @@ where
     /// we will use a buffer large enough to contain four writes at a time and return
     /// [`Error::WriteSizeExceeded`] if more writes are requested.  This is unlikely to be a
     /// limitation given that there are four channels.
-    pub fn multi_write(
+    pub async fn multi_write(
         &mut self,
         channel_updates: &[(Channel, OutputEnableMode, ChannelState)],
     ) -> Result<(), Error<E>> {
@@ -446,14 +462,14 @@ where
             Some(byte)
         });
 
-        self.write_iter(self.address, generator)
+        self.write_iter(self.address, generator).await
     }
 
     /// Writes only the voltage reference mode bits for all channels.
     ///
     /// The EEPROM data is not affected and the output of each channel is updated after the command
     /// has been received.
-    pub fn write_voltage_reference_mode(
+    pub async fn write_voltage_reference_mode(
         &mut self,
         mode_a: VoltageReferenceMode,
         mode_b: VoltageReferenceMode,
@@ -465,14 +481,14 @@ where
             | (mode_b as u8) << 2
             | (mode_c as u8) << 1
             | mode_d as u8;
-        self.write_bytes(self.address, &[byte])
+        self.write_bytes(self.address, &[byte]).await
     }
 
     /// Writes only the gain mode bits for all channels.
     ///
     /// The EEPROM data is not affected and the output of each channel is updated after the command
     /// has been received.
-    pub fn write_gain_mode(
+    pub async fn write_gain_mode(
         &mut self,
         mode_a: GainMode,
         mode_b: GainMode,
@@ -484,14 +500,14 @@ where
             | (mode_b as u8) << 2
             | (mode_c as u8) << 1
             | mode_d as u8;
-        self.write_bytes(self.address, &[byte])
+        self.write_bytes(self.address, &[byte]).await
     }
 
     /// Writes only the power down mode bits for all channels.
     ///
     /// The EEPROM data is not affected and the output of each channel is updated after the command
     /// has been received.
-    pub fn write_power_down_mode(
+    pub async fn write_power_down_mode(
         &mut self,
         mode_a: PowerDownMode,
         mode_b: PowerDownMode,
@@ -501,7 +517,7 @@ where
         let mut bytes = [0; 2];
         bytes[0] = COMMAND_WRITE_POWER_DOWN_MODE | (mode_a as u8) << 2 | mode_b as u8;
         bytes[1] = (mode_c as u8) << 6 | (mode_d as u8) << 4;
-        self.write_bytes(self.address, &bytes)
+        self.write_bytes(self.address, &bytes).await
     }
 
     fn parse_bytes(bytes: &[u8]) -> ChannelRegisters {
@@ -522,14 +538,23 @@ where
 }
 
 #[cfg(test)]
+#[maybe_async_cfg::maybe(
+    idents(MCP4728(sync, async = "MCP4728Async"),),
+    sync(feature = "sync"),
+    async(feature = "async")
+)]
 mod tests {
     use embedded_hal::i2c::ErrorKind;
     use embedded_hal_mock::eh1::i2c::{Mock as MockI2C, Transaction};
+    #[maybe_async_cfg::only_if(sync)]
+    use test as maybe_async_test;
+    #[maybe_async_cfg::only_if(async)]
+    use tokio::test as maybe_async_test;
 
     use crate::*;
 
-    #[test]
-    fn fast_write() {
+    #[maybe_async_test]
+    async fn fast_write() {
         let expectations = [Transaction::write(
             0x60,
             vec![0x0a, 0xaa, 0x00, 0x00, 0x0a, 0xaa, 0x00, 0x00],
@@ -537,14 +562,16 @@ mod tests {
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
-        assert_eq!(mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000), Ok(()));
+        assert_eq!(
+            mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000).await,
+            Ok(())
+        );
         i2c = mcp4728.release();
 
         i2c.done(); // Verify expectations.
     }
-
-    #[test]
-    fn fast_write_i2c_error() {
+    #[maybe_async_test]
+    async fn fast_write_i2c_error() {
         let expectations =
             [
                 Transaction::write(0x60, vec![0x0a, 0xaa, 0x00, 0x00, 0x0a, 0xaa, 0x00, 0x00])
@@ -554,7 +581,7 @@ mod tests {
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000),
+            mcp4728.fast_write(0x0aaa, 0x0000, 0x0aaa, 0x0000).await,
             Err(Error::I2CError(ErrorKind::Other))
         );
         i2c = mcp4728.release();
@@ -562,14 +589,14 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn fast_write_out_of_bounds_error() {
+    #[maybe_async_test]
+    async fn fast_write_out_of_bounds_error() {
         let expectations = [];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.fast_write(0x1000, 0x0000, 0x0000, 0x0000),
+            mcp4728.fast_write(0x1000, 0x0000, 0x0000, 0x0000).await,
             Err(Error::ValueOutOfBounds(0x1000))
         );
         i2c = mcp4728.release();
@@ -577,8 +604,8 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn fast_write_with_power_down_mode() {
+    #[maybe_async_test]
+    async fn fast_write_with_power_down_mode() {
         let expectations = [Transaction::write(
             0x60,
             vec![0x0a, 0xaa, 0x10, 0x00, 0x2a, 0xaa, 0x30, 0x00],
@@ -587,12 +614,14 @@ mod tests {
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.fast_write_with_power_down_mode(
-                (PowerDownMode::Normal, 0x0aaa),
-                (PowerDownMode::PowerDownOneK, 0x0000),
-                (PowerDownMode::PowerDownOneHundredK, 0x0aaa),
-                (PowerDownMode::PowerDownFiveHundredK, 0x0000),
-            ),
+            mcp4728
+                .fast_write_with_power_down_mode(
+                    (PowerDownMode::Normal, 0x0aaa),
+                    (PowerDownMode::PowerDownOneK, 0x0000),
+                    (PowerDownMode::PowerDownOneHundredK, 0x0aaa),
+                    (PowerDownMode::PowerDownFiveHundredK, 0x0000),
+                )
+                .await,
             Ok(())
         );
         i2c = mcp4728.release();
@@ -601,8 +630,8 @@ mod tests {
     }
 
     // || 0 1 0 1 1 CH CH OE || VR PD PD G D D D D || D D D D D D D D ||
-    #[test]
-    fn single_write_default_values() {
+    #[maybe_async_test]
+    async fn single_write_default_values() {
         let expectations = [Transaction::write(
             0x60,
             vec![0b01011010, 0b10001010, 0b10101010],
@@ -611,11 +640,13 @@ mod tests {
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.single_write(
-                Channel::B,
-                OutputEnableMode::Update,
-                &ChannelState::new().value(0x0aaa)
-            ),
+            mcp4728
+                .single_write(
+                    Channel::B,
+                    OutputEnableMode::Update,
+                    &ChannelState::new().value(0x0aaa)
+                )
+                .await,
             Ok(())
         );
         i2c = mcp4728.release();
@@ -623,8 +654,8 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn single_write_set_all_values() {
+    #[maybe_async_test]
+    async fn single_write_set_all_values() {
         let expectations = [Transaction::write(
             0x60,
             vec![0b01011111, 0b11111111, 0b11111111],
@@ -633,15 +664,17 @@ mod tests {
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.single_write(
-                Channel::D,
-                OutputEnableMode::NoUpdate,
-                &ChannelState::new()
-                    .voltage_reference_mode(VoltageReferenceMode::Internal)
-                    .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
-                    .gain_mode(GainMode::TimesTwo)
-                    .value(0x0fff)
-            ),
+            mcp4728
+                .single_write(
+                    Channel::D,
+                    OutputEnableMode::NoUpdate,
+                    &ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::Internal)
+                        .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
+                        .gain_mode(GainMode::TimesTwo)
+                        .value(0x0fff)
+                )
+                .await,
             Ok(())
         );
         i2c = mcp4728.release();
@@ -649,18 +682,20 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn single_write_out_of_bounds_error() {
+    #[maybe_async_test]
+    async fn single_write_out_of_bounds_error() {
         let expectations = [];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.single_write(
-                Channel::B,
-                OutputEnableMode::NoUpdate,
-                &ChannelState::new().value(0xffff)
-            ),
+            mcp4728
+                .single_write(
+                    Channel::B,
+                    OutputEnableMode::NoUpdate,
+                    &ChannelState::new().value(0xffff)
+                )
+                .await,
             Err(Error::ValueOutOfBounds(0xffff))
         );
         i2c = mcp4728.release();
@@ -668,8 +703,8 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn multi_write_set_all_values() {
+    #[maybe_async_test]
+    async fn multi_write_set_all_values() {
         let expectations = [Transaction::write(
             0x60,
             vec![0b01000111, 0b11111111, 0b11111111],
@@ -678,15 +713,17 @@ mod tests {
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.multi_write(&[(
-                Channel::D,
-                OutputEnableMode::NoUpdate,
-                ChannelState::new()
-                    .voltage_reference_mode(VoltageReferenceMode::Internal)
-                    .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
-                    .gain_mode(GainMode::TimesTwo)
-                    .value(0x0fff)
-            )]),
+            mcp4728
+                .multi_write(&[(
+                    Channel::D,
+                    OutputEnableMode::NoUpdate,
+                    ChannelState::new()
+                        .voltage_reference_mode(VoltageReferenceMode::Internal)
+                        .power_down_mode(PowerDownMode::PowerDownFiveHundredK)
+                        .gain_mode(GainMode::TimesTwo)
+                        .value(0x0fff)
+                )])
+                .await,
             Ok(())
         );
 
@@ -695,8 +732,8 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn multi_write_multiple_values() {
+    #[maybe_async_test]
+    async fn multi_write_multiple_values() {
         let expectations = [Transaction::write(
             0x60,
             vec![
@@ -707,22 +744,24 @@ mod tests {
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.multi_write(&[
-                (
-                    Channel::A,
-                    OutputEnableMode::Update,
-                    ChannelState::new()
-                        .voltage_reference_mode(VoltageReferenceMode::External)
-                        .value(0x0001)
-                ),
-                (
-                    Channel::B,
-                    OutputEnableMode::Update,
-                    ChannelState::new()
-                        .voltage_reference_mode(VoltageReferenceMode::External)
-                        .value(0x0002)
-                )
-            ]),
+            mcp4728
+                .multi_write(&[
+                    (
+                        Channel::A,
+                        OutputEnableMode::Update,
+                        ChannelState::new()
+                            .voltage_reference_mode(VoltageReferenceMode::External)
+                            .value(0x0001)
+                    ),
+                    (
+                        Channel::B,
+                        OutputEnableMode::Update,
+                        ChannelState::new()
+                            .voltage_reference_mode(VoltageReferenceMode::External)
+                            .value(0x0002)
+                    )
+                ])
+                .await,
             Ok(())
         );
 
@@ -731,8 +770,8 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn sequential_write_multiple_values() {
+    #[maybe_async_test]
+    async fn sequential_write_multiple_values() {
         let expectations = [Transaction::write(
             0x60,
             vec![
@@ -744,16 +783,18 @@ mod tests {
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.sequential_write(
-                Channel::A,
-                OutputEnableMode::Update,
-                &[
-                    ChannelState::new().value(0x0001),
-                    ChannelState::new().value(0x0002),
-                    ChannelState::new().value(0x0003),
-                    ChannelState::new().value(0x0004),
-                ]
-            ),
+            mcp4728
+                .sequential_write(
+                    Channel::A,
+                    OutputEnableMode::Update,
+                    &[
+                        ChannelState::new().value(0x0001),
+                        ChannelState::new().value(0x0002),
+                        ChannelState::new().value(0x0003),
+                        ChannelState::new().value(0x0004),
+                    ]
+                )
+                .await,
             Ok(())
         );
         i2c = mcp4728.release();
@@ -761,23 +802,25 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn sequential_write_too_many_values() {
+    #[maybe_async_test]
+    async fn sequential_write_too_many_values() {
         let expectations = [];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.sequential_write(
-                Channel::B,
-                OutputEnableMode::Update,
-                &[
-                    ChannelState::new().value(0x0001),
-                    ChannelState::new().value(0x0002),
-                    ChannelState::new().value(0x0003),
-                    ChannelState::new().value(0x0004),
-                ]
-            ),
+            mcp4728
+                .sequential_write(
+                    Channel::B,
+                    OutputEnableMode::Update,
+                    &[
+                        ChannelState::new().value(0x0001),
+                        ChannelState::new().value(0x0002),
+                        ChannelState::new().value(0x0003),
+                        ChannelState::new().value(0x0004),
+                    ]
+                )
+                .await,
             Err(Error::StartingChannelMismatch)
         );
 
@@ -786,19 +829,21 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn write_voltage_reference_mode() {
+    #[maybe_async_test]
+    async fn write_voltage_reference_mode() {
         let expectations = [Transaction::write(0x60, vec![0b10000101])];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.write_voltage_reference_mode(
-                VoltageReferenceMode::External,
-                VoltageReferenceMode::Internal,
-                VoltageReferenceMode::External,
-                VoltageReferenceMode::Internal,
-            ),
+            mcp4728
+                .write_voltage_reference_mode(
+                    VoltageReferenceMode::External,
+                    VoltageReferenceMode::Internal,
+                    VoltageReferenceMode::External,
+                    VoltageReferenceMode::Internal,
+                )
+                .await,
             Ok(())
         );
 
@@ -807,19 +852,21 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn write_gain_mode() {
+    #[maybe_async_test]
+    async fn write_gain_mode() {
         let expectations = [Transaction::write(0x60, vec![0b11000101])];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.write_gain_mode(
-                GainMode::TimesOne,
-                GainMode::TimesTwo,
-                GainMode::TimesOne,
-                GainMode::TimesTwo,
-            ),
+            mcp4728
+                .write_gain_mode(
+                    GainMode::TimesOne,
+                    GainMode::TimesTwo,
+                    GainMode::TimesOne,
+                    GainMode::TimesTwo,
+                )
+                .await,
             Ok(())
         );
 
@@ -828,19 +875,21 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn write_power_down_mode() {
+    #[maybe_async_test]
+    async fn write_power_down_mode() {
         let expectations = [Transaction::write(0x60, vec![0b10100001, 0b10110000])];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.write_power_down_mode(
-                PowerDownMode::Normal,
-                PowerDownMode::PowerDownOneK,
-                PowerDownMode::PowerDownOneHundredK,
-                PowerDownMode::PowerDownFiveHundredK,
-            ),
+            mcp4728
+                .write_power_down_mode(
+                    PowerDownMode::Normal,
+                    PowerDownMode::PowerDownOneK,
+                    PowerDownMode::PowerDownOneHundredK,
+                    PowerDownMode::PowerDownFiveHundredK,
+                )
+                .await,
             Ok(())
         );
 
@@ -849,25 +898,25 @@ mod tests {
         i2c.done(); // Verify expectations.
     }
 
-    #[test]
-    fn read() {
+    #[maybe_async_test]
+    async fn read() {
         #[rustfmt::skip]
-        let bytes = vec![
-            0b00000000, 0b00000000, 0b00000000,
-            0b11000000, 0b11111111, 0b11111111,
-            0b01000000, 0b01010101, 0b01010101,
-            0b00000000, 0b00000000, 0b00000000,
-            0b00000000, 0b00000000, 0b00000000,
-            0b00000000, 0b00000000, 0b00000000,
-            0b00000000, 0b00000000, 0b00000000,
-            0b00000000, 0b00000000, 0b00000000,
-        ];
+            let bytes = vec![
+                0b00000000, 0b00000000, 0b00000000,
+                0b11000000, 0b11111111, 0b11111111,
+                0b01000000, 0b01010101, 0b01010101,
+                0b00000000, 0b00000000, 0b00000000,
+                0b00000000, 0b00000000, 0b00000000,
+                0b00000000, 0b00000000, 0b00000000,
+                0b00000000, 0b00000000, 0b00000000,
+                0b00000000, 0b00000000, 0b00000000,
+            ];
         let expectations = [Transaction::read(0x60, bytes)];
         let mut i2c = MockI2C::new(&expectations);
         let mut mcp4728 = MCP4728::new(i2c, 0x60);
 
         assert_eq!(
-            mcp4728.read(),
+            mcp4728.read().await,
             Ok(Registers {
                 channel_a_input: ChannelRegisters {
                     channel_state: ChannelState::new()

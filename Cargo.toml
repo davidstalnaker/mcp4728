@@ -11,17 +11,25 @@ categories = ["no-std", "embedded", "hardware-support"]
 autoexamples = false
 
 [features]
+default = ["sync"]
+sync = ["dep:embedded-hal"]
+async = ["dep:embedded-hal-async"]
 defmt = ["dep:defmt"]
 
 [dependencies]
 defmt = { version = "0.3", optional = true }
-embedded-hal = "1.0.0"
-num_enum = { version = "0.7.2", default-features = false }
+embedded-hal = { version = "1.0.0", optional = true }
+embedded-hal-async = { version = "1.0.0", optional = true }
+maybe-async-cfg = "0.2.5"
+num_enum = { version = "0.7.3", default-features = false }
 
 [dev-dependencies]
-embedded-hal-mock = { version = "0.10.0", default-features = false, features = [
+embedded-hal-mock = { version = "0.11.0", default-features = false, features = [
   "eh1",
+  "embedded-hal-async",
 ] }
+embedded-hal = { version = "1.0.0" }
+tokio = { version = "1.43.0", features = ["macros", "rt"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 linux-embedded-hal = "0.4.0"
