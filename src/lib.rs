@@ -1001,4 +1001,19 @@ mod tests {
 
         i2c.done(); // Verify expectations.
     }
+
+    #[maybe_async_test]
+    async fn read_fuzz() {
+        for i in 0..=u8::MAX {
+            let bytes = vec![i; 24];
+            let expectations = [Transaction::read(0x60, bytes)];
+            let mut i2c = MockI2C::new(&expectations);
+            let mut mcp4728 = MCP4728::new(i2c, 0x60);
+
+            assert_eq!(mcp4728.read().await.is_ok(), true);
+            i2c = mcp4728.release();
+
+            i2c.done(); // Verify expectations.
+        }
+    }
 }
