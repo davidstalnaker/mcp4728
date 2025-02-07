@@ -97,7 +97,7 @@ pub enum PowerDownMode {
 pub enum GainMode {
     /// Gain is set to unity (1x).
     TimesOne = 0,
-    /// Gain is set to unity (2x).
+    /// Gain is set to 2x.
     TimesTwo = 1,
 }
 
