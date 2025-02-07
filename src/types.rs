@@ -108,12 +108,12 @@ pub enum GainMode {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum ReadyState {
-    /// The EEPROM is not busy.
-    Ready = 0,
     /// The EEPROM is busy.
     ///
-    /// Any additional commands recieved while busy will be ignored.
-    Busy = 1,
+    /// Any additional write commands recieved while busy will be ignored.
+    Busy = 0,
+    /// The EEPROM is not busy.
+    Ready = 1,
 }
 
 /// The power-on state of the entire device.
