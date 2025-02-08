@@ -1,6 +1,6 @@
 [package]
 name = "mcp4728"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Platform agnostic rust driver for the MCP4728 4-channel, 12-bit I2C DAC."
